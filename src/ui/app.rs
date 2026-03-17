@@ -11,7 +11,7 @@ use crate::vault::storage;
 
 use super::screens::{
     add_entry::AddEntryScreen, confirm::ConfirmScreen, edit_entry::EditEntryScreen,
-    input::InputScreen, login::LoginScreen, recovery::RecoveryScreen,
+    input::InputScreen, login::LoginScreen, nuke::NukeScreen, recovery::RecoveryScreen,
     recovery_setup::RecoverySetupScreen, settings::SettingsScreen,
     view_entry::ViewEntryScreen, view_password::ViewPasswordScreen,
     wizard::{WizardScreen, WizardAction},
@@ -57,6 +57,8 @@ pub enum AppView {
     ViewPassword(ViewPasswordScreen),
     Recovery(RecoveryScreen),
     RecoverySetup(RecoverySetupScreen),
+    NoRecovery,
+    Nuke(NukeScreen),
     Message { title: String, message: String, is_error: bool },
     Help,
     CopyCountdown { entry_name: String, seconds_left: u8 },
@@ -156,6 +158,12 @@ impl App {
             AppView::ViewPassword(vp) => vp.render(frame),
             AppView::Recovery(recovery) => recovery.render(frame),
             AppView::RecoverySetup(setup) => setup.render(frame),
+            AppView::NoRecovery => {
+                Self::render_no_recovery_static(frame);
+            }
+            AppView::Nuke(nuke) => {
+                nuke.render(frame);
+            }
             AppView::Message { title, message, is_error } => {
                 let title = title.clone();
                 let message = message.clone();
@@ -227,6 +235,16 @@ impl App {
             }
             AppView::RecoverySetup(_) => {
                 self.handle_recovery_setup_input(key, modifiers)?;
+            }
+            AppView::NoRecovery => {
+                if key == KeyCode::F(2) {
+                    self.view = AppView::Nuke(NukeScreen::new());
+                } else if matches!(key, KeyCode::Esc | KeyCode::Enter) {
+                    self.view = AppView::Login(LoginScreen::new());
+                }
+            }
+            AppView::Nuke(_) => {
+                self.handle_nuke_input(key, modifiers)?;
             }
             AppView::Message { .. } => {
                 if matches!(key, KeyCode::Enter | KeyCode::Esc) {
@@ -367,11 +385,7 @@ impl App {
                 self.view = AppView::Recovery(RecoveryScreen::new(recovery_config));
             }
             None => {
-                self.show_message(
-                    "Recovery Not Available".into(),
-                    "No recovery question has been configured.\nSet one up in Settings or during init.".into(),
-                    true,
-                );
+                self.view = AppView::NoRecovery;
             }
         }
         Ok(())
@@ -433,6 +447,36 @@ impl App {
                 self.view = AppView::Login(LoginScreen::new());
             }
             super::screens::recovery::RecoveryAction::Continue => {}
+        }
+        Ok(())
+    }
+
+    fn handle_nuke_input(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Result<()> {
+        let action = match &mut self.view {
+            AppView::Nuke(nuke) => nuke.handle_key(key, modifiers),
+            _ => return Ok(()),
+        };
+
+        match action {
+            super::screens::nuke::NukeAction::Cancel => {
+                self.view = AppView::Login(LoginScreen::new());
+            }
+            super::screens::nuke::NukeAction::Confirm => {
+                if let Err(e) = storage::delete_vault() {
+                    self.view = AppView::Login(LoginScreen::new());
+                    self.show_message(
+                        "Delete Failed".to_string(),
+                        format!("Failed to delete vault: {}\n\nYour vault has not been modified.", e),
+                        true,
+                    );
+                    return Ok(());
+                }
+                let _ = crate::config::delete_config(); // best-effort; vault is already gone
+                self.config = crate::config::model::Config::default();
+                self.session = None;
+                self.view = AppView::Wizard(WizardScreen::new());
+            }
+            super::screens::nuke::NukeAction::Continue => {}
         }
         Ok(())
     }
@@ -954,6 +998,54 @@ impl App {
     }
 
     // ─── Static Renderers ────────────────────────────────────────────
+
+    fn render_no_recovery_static(frame: &mut Frame) {
+        use ratatui::{
+            layout::{Constraint, Direction, Layout},
+            style::{Color, Modifier, Style},
+            text::{Line, Span},
+            widgets::{Block, Borders, Paragraph, Wrap},
+        };
+
+        let area = frame.area();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(10),
+                Constraint::Min(1),
+            ])
+            .split(area);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Recovery Not Available ")
+            .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+            .border_style(Style::default().fg(Color::Red));
+
+        let lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  No recovery question has been configured.",
+                Style::default().fg(Color::White),
+            )),
+            Line::from(Span::styled(
+                "  Set one up in Settings the next time you log in.",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  F2", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                Span::styled(" Delete vault & start over", Style::default().fg(Color::White)),
+                Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Esc", Style::default().fg(Color::Cyan)),
+                Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
+            ]),
+        ];
+
+        let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+        frame.render_widget(paragraph, chunks[1]);
+    }
 
     fn render_message_static(frame: &mut Frame, title: &str, message: &str, is_error: bool) {
         use ratatui::{
