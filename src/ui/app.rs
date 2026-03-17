@@ -446,6 +446,9 @@ impl App {
             super::screens::recovery::RecoveryAction::Cancel => {
                 self.view = AppView::Login(LoginScreen::new());
             }
+            super::screens::recovery::RecoveryAction::DeleteVault => {
+                self.view = AppView::Nuke(NukeScreen::new());
+            }
             super::screens::recovery::RecoveryAction::Continue => {}
         }
         Ok(())

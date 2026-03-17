@@ -46,6 +46,8 @@ pub enum RecoveryAction {
         master_key: Zeroizing<[u8; 32]>,
         new_password: Zeroizing<String>,
     },
+    /// User wants to delete vault and start over
+    DeleteVault,
 }
 
 impl RecoveryScreen {
@@ -68,6 +70,9 @@ impl RecoveryScreen {
     }
 
     pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> RecoveryAction {
+        if key == KeyCode::F(2) {
+            return RecoveryAction::DeleteVault;
+        }
         if key == KeyCode::Esc {
             return RecoveryAction::Cancel;
         }
@@ -279,10 +284,14 @@ impl RecoveryScreen {
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  Enter: Submit | Esc: Cancel",
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(vec![
+            Span::styled("  Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(": Submit  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(": Cancel  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("F2", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(": Delete vault & start over", Style::default().fg(Color::DarkGray)),
+        ]));
 
         let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
         frame.render_widget(paragraph, chunks[1]);
