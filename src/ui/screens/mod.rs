@@ -1,9 +1,9 @@
 pub mod add_entry;
-pub mod nuke;
 pub mod confirm;
 pub mod edit_entry;
 pub mod input;
 pub mod login;
+pub mod nuke;
 pub mod recovery;
 pub mod recovery_setup;
 pub mod settings;

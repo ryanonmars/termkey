@@ -28,6 +28,7 @@ impl NukeScreen {
 
     pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> NukeAction {
         if key == KeyCode::Esc {
+            self.error_message = None;
             return NukeAction::Cancel;
         }
 
