@@ -1,4 +1,5 @@
 pub mod add_entry;
+pub mod nuke;
 pub mod confirm;
 pub mod edit_entry;
 pub mod input;
