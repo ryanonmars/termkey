@@ -30,6 +30,22 @@ pub fn vault_exists() -> bool {
     vault_path().exists()
 }
 
+/// Delete the vault file and any leftover .tmp file.
+pub fn delete_vault() -> Result<()> {
+    delete_vault_at(&vault_path())
+}
+
+fn delete_vault_at(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    let tmp = path.with_extension("tmp");
+    if tmp.exists() {
+        let _ = fs::remove_file(&tmp); // best-effort
+    }
+    Ok(())
+}
+
 /// Ensure the vault directory exists with proper permissions.
 pub fn ensure_vault_dir() -> Result<()> {
     let dir = vault_dir();
@@ -457,5 +473,35 @@ mod tests {
         fs::write(&path, b"too short").unwrap();
         let result = read_vault(b"pass", &path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_vault_removes_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        let vault = test_vault();
+        write_vault(&vault, b"password", &path).unwrap();
+        assert!(path.exists());
+        delete_vault_at(&path).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_delete_vault_removes_tmp_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, b"leftover").unwrap();
+        delete_vault_at(&path).unwrap(); // vault.ck doesn't exist, tmp does
+        assert!(!tmp.exists());
+    }
+
+    #[test]
+    fn test_delete_vault_nonexistent_is_ok() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        // Neither file exists — should not error
+        let result = delete_vault_at(&path);
+        assert!(result.is_ok());
     }
 }
