@@ -49,6 +49,22 @@ pub fn save_config(config: &Config) -> Result<()> {
     save_config_to(config, &config_path())
 }
 
+/// Delete the config file and any leftover .tmp file.
+pub fn delete_config() -> Result<()> {
+    delete_config_at(&config_path())
+}
+
+fn delete_config_at(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    let tmp = path.with_extension("tmp");
+    if tmp.exists() {
+        let _ = fs::remove_file(&tmp); // best-effort
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn set_config_permissions(path: &std::path::Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -92,5 +108,34 @@ mod tests {
         assert_eq!(loaded.vault_path, "/test/vault.ck");
         assert_eq!(loaded.clipboard_timeout_secs, 20);
         assert!(loaded.first_run_complete);
+    }
+
+    #[test]
+    fn test_delete_config_removes_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let config = Config::default();
+        save_config_to(&config, &path).unwrap();
+        assert!(path.exists());
+        delete_config_at(&path).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_delete_config_removes_tmp_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, b"leftover").unwrap();
+        delete_config_at(&path).unwrap();
+        assert!(!tmp.exists());
+    }
+
+    #[test]
+    fn test_delete_config_nonexistent_is_ok() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        let result = delete_config_at(&path);
+        assert!(result.is_ok());
     }
 }
