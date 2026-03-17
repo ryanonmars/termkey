@@ -144,3 +144,32 @@ jobs:
           git add Formula/cryptokeeper.rb
           git commit -m "cryptokeeper ${VER}"
           git push
+
+  update-winget:
+    name: Update Winget Manifest
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cryptokeeper-windows-x86_64
+          path: artifacts
+
+      - name: Download wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Run wingetcreate update
+        shell: pwsh
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $url = "https://github.com/ryanonmars/CryptoKeeper/releases/download/$env:GITHUB_REF_NAME/cryptokeeper-windows-x86_64.zip"
+          .\wingetcreate.exe update RyanOnMars.CryptoKeeper `
+            --version $version `
+            --urls $url `
+            --token $env:WINGET_PAT `
+            --submit
