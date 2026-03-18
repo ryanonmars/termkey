@@ -1,6 +1,6 @@
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -24,14 +24,3 @@ pub fn restore() -> io::Result<()> {
     Ok(())
 }
 
-pub fn exit_raw_mode_temporarily() -> io::Result<()> {
-    disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
-    Ok(())
-}
-
-pub fn reenter_raw_mode() -> io::Result<()> {
-    execute!(io::stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
-    enable_raw_mode()?;
-    Ok(())
-}

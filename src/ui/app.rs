@@ -23,11 +23,14 @@ pub struct Session {
     password: Zeroizing<String>,
     key: Zeroizing<[u8; 32]>,
     salt: [u8; 32],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
 }
 
 impl Session {
     pub fn save(&self) -> Result<()> {
-        storage::save_vault_with_key(&self.vault, &*self.key, &self.salt)
+        storage::save_vault_with_key(&self.vault, &*self.key, &self.salt, self.m_cost, self.t_cost, self.p_cost)
     }
 }
 
@@ -38,7 +41,7 @@ pub struct App {
     should_quit: bool,
     clipboard_clear_time: Option<Instant>,
     pending_export_password: Option<String>,
-    pending_new_password: Option<String>,
+    pending_new_password: Option<Zeroizing<String>>,
     /// Entry index pending secondary password verification for view
     pending_view_entry_idx: Option<usize>,
     /// Entry index pending secondary password verification for copy
@@ -70,6 +73,7 @@ pub enum AppView {
 pub enum InputPurpose {
     ExportPath,
     ExportPassword,
+    ConfirmExportPassword,
     ImportPath,
     ImportPassword,
     ChangePassword,
@@ -326,7 +330,7 @@ impl App {
 
                 // Set up recovery if chosen
                 if let Some((question_index, answer)) = &result.recovery {
-                    let (vault_data, key, salt) =
+                    let (vault_data, key, salt, m_cost, t_cost, p_cost) =
                         storage::unlock_vault_returning_key(password.as_bytes())?;
 
                     let answer_salt = crate::crypto::kdf::generate_salt();
@@ -349,15 +353,21 @@ impl App {
                         password: password.clone(),
                         key,
                         salt,
+                        m_cost,
+                        t_cost,
+                        p_cost,
                     });
                 } else {
-                    let (vault_data, key, salt) =
+                    let (vault_data, key, salt, m_cost, t_cost, p_cost) =
                         storage::unlock_vault_returning_key(password.as_bytes())?;
                     self.session = Some(Session {
                         vault: vault_data,
                         password: password.clone(),
                         key,
                         salt,
+                        m_cost,
+                        t_cost,
+                        p_cost,
                     });
                 }
 
@@ -408,7 +418,7 @@ impl App {
                         storage::save_vault(&vault, new_password.as_bytes())?;
 
                         // Re-derive key and salt for the new session
-                        let (vault_data, new_key, new_salt) =
+                        let (vault_data, new_key, new_salt, m_cost, t_cost, p_cost) =
                             storage::unlock_vault_returning_key(new_password.as_bytes())?;
 
                         // Update recovery config with the new master key
@@ -426,6 +436,9 @@ impl App {
                             password: new_password,
                             key: new_key,
                             salt: new_salt,
+                            m_cost,
+                            t_cost,
+                            p_cost,
                         });
 
                         self.show_message(
@@ -488,12 +501,15 @@ impl App {
 
     fn unlock_vault(&mut self, password: Zeroizing<String>) -> Result<()> {
         match storage::unlock_vault_returning_key(password.as_bytes()) {
-            Ok((vault, key, salt)) => {
+            Ok((vault, key, salt, m_cost, t_cost, p_cost)) => {
                 self.session = Some(Session {
                     vault,
                     password,
                     key,
                     salt,
+                    m_cost,
+                    t_cost,
+                    p_cost,
                 });
                 self.return_to_dashboard();
                 Ok(())
@@ -650,12 +666,6 @@ impl App {
             }
         }
         Ok(())
-    }
-
-    fn get_selected_entry_copy(&self, dashboard: &Dashboard) -> Option<Entry> {
-        let session = self.session.as_ref()?;
-        let selected_idx = dashboard.selected_index()?;
-        session.vault.entries.get(selected_idx).cloned()
     }
 
     // ─── Settings ────────────────────────────────────────────────────
@@ -858,22 +868,17 @@ impl App {
                 self.return_to_dashboard();
             }
             super::screens::view_entry::ViewEntryAction::Copy(secret) => {
-                use arboard::Clipboard;
                 let timeout = self.config.clipboard_timeout_secs;
-                if let Ok(mut clipboard) = Clipboard::new() {
-                    let _ = clipboard.set_text(&secret);
-                    self.clipboard_clear_time = Some(Instant::now() + Duration::from_secs(timeout));
-
-                    let entry_name = match &self.view {
-                        AppView::ViewEntry(v) => v.entry.name.clone(),
-                        _ => String::new(),
-                    };
-
-                    self.view = AppView::CopyCountdown {
-                        entry_name,
-                        seconds_left: timeout as u8,
-                    };
-                }
+                let entry_name = match &self.view {
+                    AppView::ViewEntry(v) => v.entry.name.clone(),
+                    _ => String::new(),
+                };
+                crate::clipboard::copy_and_clear(&secret, timeout)?;
+                self.clipboard_clear_time = Some(Instant::now() + Duration::from_secs(timeout));
+                self.view = AppView::CopyCountdown {
+                    entry_name,
+                    seconds_left: timeout as u8,
+                };
             }
             super::screens::view_entry::ViewEntryAction::Continue => {}
         }
@@ -955,16 +960,13 @@ impl App {
     // ─── Clipboard ───────────────────────────────────────────────────
 
     fn copy_to_clipboard(&mut self, entry: &Entry) -> Result<()> {
-        use arboard::Clipboard;
         let timeout = self.config.clipboard_timeout_secs;
-        if let Ok(mut clipboard) = Clipboard::new() {
-            let _ = clipboard.set_text(&entry.secret);
-            self.clipboard_clear_time = Some(Instant::now() + Duration::from_secs(timeout));
-            self.view = AppView::CopyCountdown {
-                entry_name: entry.name.clone(),
-                seconds_left: timeout as u8,
-            };
-        }
+        crate::clipboard::copy_and_clear(&entry.secret, timeout)?;
+        self.clipboard_clear_time = Some(Instant::now() + Duration::from_secs(timeout));
+        self.view = AppView::CopyCountdown {
+            entry_name: entry.name.clone(),
+            seconds_left: timeout as u8,
+        };
         Ok(())
     }
 
@@ -1255,16 +1257,24 @@ impl App {
                         self.view = AppView::Input(input, InputPurpose::ExportPassword);
                     }
                     InputPurpose::ExportPassword => {
+                        let input = InputScreen::new("Export Vault", "Confirm backup password:", true);
+                        self.pending_new_password = Some(Zeroizing::new(value));
+                        self.view = AppView::Input(input, InputPurpose::ConfirmExportPassword);
+                    }
+                    InputPurpose::ConfirmExportPassword => {
                         if let Some(path) = self.pending_export_password.take() {
-                            if let Some(session) = &self.session {
-                                let password = Zeroizing::new(value);
-                                let backup_path = std::path::Path::new(&path).join("backup.ck");
-                                match crate::vault::storage::write_backup(&session.vault, password.as_bytes(), &backup_path) {
-                                    Ok(_) => {
-                                        self.show_success(format!("Vault exported to {}/backup.ck", path));
-                                    }
-                                    Err(e) => {
-                                        self.show_message("Export Error".to_string(), format!("Failed to export: {}", e), true);
+                            if let Some(export_pass) = self.pending_new_password.take() {
+                                if *export_pass != value {
+                                    self.show_message("Export Error".to_string(), "Passwords do not match!".to_string(), true);
+                                } else if let Some(session) = &self.session {
+                                    let backup_path = std::path::Path::new(&path).join("backup.ck");
+                                    match crate::vault::storage::write_backup(&session.vault, export_pass.as_bytes(), &backup_path) {
+                                        Ok(_) => {
+                                            self.show_success(format!("Vault exported to {}/backup.ck", path));
+                                        }
+                                        Err(e) => {
+                                            self.show_message("Export Error".to_string(), format!("Failed to export: {}", e), true);
+                                        }
                                     }
                                 }
                             }
@@ -1289,7 +1299,7 @@ impl App {
                                             }
                                         }
                                         if imported > 0 {
-                                            let _ = session.save();
+                                            session.save()?;
                                         }
                                         self.show_success(format!("Imported {} entries from backup", imported));
                                     }
@@ -1302,38 +1312,55 @@ impl App {
                     }
                     InputPurpose::ChangePassword => {
                         let input = InputScreen::new("Change Password", "Confirm new password:", true);
-                        self.pending_new_password = Some(value);
+                        self.pending_new_password = Some(Zeroizing::new(value));
                         self.view = AppView::Input(input, InputPurpose::ConfirmPassword);
                     }
                     InputPurpose::ConfirmPassword => {
                         if let Some(new_pass) = self.pending_new_password.take() {
-                            if new_pass == value {
-                                if let Some(session) = &mut self.session {
-                                    let password = Zeroizing::new(new_pass);
-                                    match crate::vault::storage::save_vault(&session.vault, password.as_bytes()) {
-                                        Ok(_) => {
-                                            // Warn about recovery invalidation
-                                            let has_recovery = self.config.recovery.is_some();
-                                            session.password = password.clone();
-                                            if has_recovery {
-                                                self.config.recovery = None;
-                                                let _ = crate::config::save_config(&self.config);
-                                                self.show_message(
-                                                    "Password Changed".into(),
-                                                    "Master password changed successfully!\n\nNote: Your recovery question has been cleared.\nPlease set up a new one in Settings (Shift+S).".into(),
-                                                    false,
-                                                );
-                                            } else {
-                                                self.show_success("Master password changed successfully!".to_string());
+                            if *new_pass != value {
+                                self.show_message("Error".to_string(), "Passwords do not match!".to_string(), true);
+                                return Ok(());
+                            }
+                            let save_result = if let Some(session) = &self.session {
+                                crate::vault::storage::save_vault(&session.vault, new_pass.as_bytes())
+                            } else {
+                                return Ok(());
+                            };
+                            match save_result {
+                                Ok(_) => {
+                                    match storage::unlock_vault_returning_key(new_pass.as_bytes()) {
+                                        Ok((vault_data, new_key, new_salt, m_cost, t_cost, p_cost)) => {
+                                            if let Some(session) = &mut self.session {
+                                                session.vault = vault_data;
+                                                session.password = new_pass;
+                                                session.key = new_key;
+                                                session.salt = new_salt;
+                                                session.m_cost = m_cost;
+                                                session.t_cost = t_cost;
+                                                session.p_cost = p_cost;
                                             }
                                         }
                                         Err(e) => {
-                                            self.show_message("Password Change Error".to_string(), format!("Failed to change password: {}", e), true);
+                                            self.show_message("Error".to_string(), format!("Failed to refresh session: {}", e), true);
+                                            return Ok(());
                                         }
                                     }
+                                    let has_recovery = self.config.recovery.is_some();
+                                    if has_recovery {
+                                        self.config.recovery = None;
+                                        let _ = crate::config::save_config(&self.config);
+                                        self.show_message(
+                                            "Password Changed".into(),
+                                            "Master password changed successfully!\n\nNote: Your recovery question has been cleared.\nPlease set up a new one in Settings (Shift+S).".into(),
+                                            false,
+                                        );
+                                    } else {
+                                        self.show_success("Master password changed successfully!".to_string());
+                                    }
                                 }
-                            } else {
-                                self.show_message("Error".to_string(), "Passwords do not match!".to_string(), true);
+                                Err(e) => {
+                                    self.show_message("Password Change Error".to_string(), format!("Failed to change password: {}", e), true);
+                                }
                             }
                         }
                     }

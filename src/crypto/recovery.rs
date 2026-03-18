@@ -1,9 +1,8 @@
+use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
 use crate::error::{TermKeyError, Result};
-
-pub const MIN_ANSWER_LENGTH: usize = 3;
 
 /// Normalize a recovery answer: trim, lowercase, collapse whitespace.
 pub fn normalize_answer(answer: &str) -> String {
@@ -37,7 +36,7 @@ pub fn hash_answer(answer: &str, salt: &[u8]) -> Result<Vec<u8>> {
 /// Verify a normalized answer against a stored hash.
 pub fn verify_answer(answer: &str, salt: &[u8], expected_hash: &[u8]) -> Result<bool> {
     let hash = hash_answer(answer, salt)?;
-    Ok(hash == expected_hash)
+    Ok(hash.ct_eq(expected_hash).into())
 }
 
 /// Encrypt the master key under a recovery-answer-derived key.
@@ -65,9 +64,11 @@ pub fn decrypt_recovery_blob(
     salt_arr[..copy_len].copy_from_slice(&salt[..copy_len]);
     let (m, t, p) = recovery_params();
     let recovery_key = kdf::derive_key(answer.as_bytes(), &salt_arr, m, t, p)?;
+    if nonce.len() != 24 {
+        return Err(crate::error::TermKeyError::InvalidVaultFormat);
+    }
     let mut nonce_arr = [0u8; 24];
-    let nonce_len = nonce.len().min(24);
-    nonce_arr[..nonce_len].copy_from_slice(&nonce[..nonce_len]);
+    nonce_arr.copy_from_slice(nonce);
     let plaintext = cipher::decrypt(&*recovery_key, &nonce_arr, blob)
         .map_err(|_| TermKeyError::RecoveryFailed("Incorrect answer or corrupted blob".into()))?;
     if plaintext.len() != 32 {

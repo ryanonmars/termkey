@@ -81,7 +81,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     );
 
     if *secret != *confirm {
-        return Err(TermKeyError::PasswordMismatch);
+        return Err(TermKeyError::SecretMismatch);
     }
 
     // Network & address (skip for Password type)

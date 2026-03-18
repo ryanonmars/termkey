@@ -1894,6 +1894,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
+ "subtle",
  "tempfile",
  "thiserror",
  "unicode-width 0.2.2",

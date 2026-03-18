@@ -42,7 +42,8 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     }
 
     // Re-fetch the entry after borrow checker satisfaction
-    let entry = vault.find_entry_mut_by_id(name).unwrap();
+    let entry = vault.find_entry_mut_by_id(name)
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     // Secret type
     let current_type_idx = match entry.secret_type {

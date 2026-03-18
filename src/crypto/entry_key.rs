@@ -34,9 +34,11 @@ pub fn decrypt_secret(
     ciphertext: &[u8],
     nonce: &[u8],
 ) -> Result<Zeroizing<String>> {
+    if nonce.len() != 24 {
+        return Err(TermKeyError::InvalidVaultFormat);
+    }
     let mut nonce_arr = [0u8; 24];
-    let n = nonce.len().min(24);
-    nonce_arr[..n].copy_from_slice(&nonce[..n]);
+    nonce_arr.copy_from_slice(nonce);
     let plaintext = cipher::decrypt(entry_key, &nonce_arr, ciphertext)
         .map_err(|_| TermKeyError::SecondaryPasswordWrong)?;
     let s = String::from_utf8(plaintext.to_vec())
@@ -70,9 +72,11 @@ pub fn unwrap_entry_key(
     salt_arr[..s].copy_from_slice(&salt[..s]);
     let (m, t, p) = entry_key_params();
     let wrapping_key = kdf::derive_key(view_password.as_bytes(), &salt_arr, m, t, p)?;
+    if nonce.len() != 24 {
+        return Err(TermKeyError::InvalidVaultFormat);
+    }
     let mut nonce_arr = [0u8; 24];
-    let n = nonce.len().min(24);
-    nonce_arr[..n].copy_from_slice(&nonce[..n]);
+    nonce_arr.copy_from_slice(nonce);
     let plaintext = cipher::decrypt(&*wrapping_key, &nonce_arr, wrapped)
         .map_err(|_| TermKeyError::SecondaryPasswordWrong)?;
     if plaintext.len() != 32 {

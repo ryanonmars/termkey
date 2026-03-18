@@ -269,10 +269,10 @@ pub fn save_vault(vault: &VaultData, password: &[u8]) -> Result<()> {
     write_vault(vault, password, &vault_path())
 }
 
-/// Unlock vault and return the derived key and salt for key caching (REPL mode).
+/// Unlock vault and return the derived key, salt, and KDF params for key caching (REPL/TUI mode).
 pub fn unlock_vault_returning_key(
     password: &[u8],
-) -> Result<(VaultData, Zeroizing<[u8; 32]>, [u8; 32])> {
+) -> Result<(VaultData, Zeroizing<[u8; 32]>, [u8; 32], u32, u32, u32)> {
     let path = vault_path();
     let data = fs::read(&path)?;
 
@@ -321,7 +321,7 @@ pub fn unlock_vault_returning_key(
     let plaintext = cipher::decrypt(&*key, &nonce, ciphertext)?;
     let vault: VaultData = serde_json::from_slice(&plaintext)?;
 
-    Ok((vault, key, salt))
+    Ok((vault, key, salt, m_cost, t_cost, p_cost))
 }
 
 /// Read vault using a pre-derived master key (for recovery flow).
@@ -359,10 +359,14 @@ pub fn read_vault_with_key(key: &[u8; 32], raw_data: &[u8]) -> Result<VaultData>
 }
 
 /// Save vault using a pre-derived key (skips Argon2 derivation for REPL mode).
+/// KDF params must match the ones used to derive `key` originally.
 pub fn save_vault_with_key(
     vault: &VaultData,
     key: &[u8; 32],
     salt: &[u8; 32],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
 ) -> Result<()> {
     let plaintext = Zeroizing::new(serde_json::to_vec(vault)?);
 
@@ -380,9 +384,9 @@ pub fn save_vault_with_key(
     data.extend_from_slice(&meta_len.to_le_bytes());
     data.extend_from_slice(&meta_json);
     data.extend_from_slice(salt);
-    data.extend_from_slice(&kdf::DEFAULT_M_COST.to_le_bytes());
-    data.extend_from_slice(&kdf::DEFAULT_T_COST.to_le_bytes());
-    data.extend_from_slice(&kdf::DEFAULT_P_COST.to_le_bytes());
+    data.extend_from_slice(&m_cost.to_le_bytes());
+    data.extend_from_slice(&t_cost.to_le_bytes());
+    data.extend_from_slice(&p_cost.to_le_bytes());
     data.extend_from_slice(&nonce);
     data.extend_from_slice(&ct_len.to_le_bytes());
     data.extend_from_slice(&ciphertext);

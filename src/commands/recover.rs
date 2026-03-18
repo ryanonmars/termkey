@@ -1,6 +1,6 @@
 use crate::config;
 use crate::config::model::RECOVERY_QUESTIONS;
-use crate::crypto::recovery;
+use crate::crypto::{kdf, recovery};
 use crate::error::{TermKeyError, Result};
 use crate::ui::borders::{print_error, print_success};
 use crate::ui::theme::heading;
@@ -86,15 +86,33 @@ pub fn run() -> Result<()> {
             recovery::normalize_answer(&answer)
         };
 
-        let (blob, nonce, salt) =
+        // Verify the re-entered answer matches the stored hash before using it.
+        if !recovery::verify_answer(
+            &normalized_answer,
+            &recovery_cfg.answer_salt,
+            &recovery_cfg.answer_hash,
+        )? {
+            return Err(TermKeyError::RecoveryFailed(
+                "Recovery answer does not match stored answer. Recovery config not updated."
+                    .into(),
+            ));
+        }
+
+        let (blob, nonce, blob_salt) =
             recovery::create_recovery_blob(&master_key, &normalized_answer)?;
+
+        // Re-hash the answer with a fresh salt so answer_hash/answer_salt stay
+        // in sync with the new blob.
+        let new_answer_salt = kdf::generate_salt().to_vec();
+        let new_answer_hash = recovery::hash_answer(&normalized_answer, &new_answer_salt)?;
+
         cfg.recovery = Some(config::RecoveryConfig {
             question_index: recovery_cfg.question_index,
-            answer_hash: recovery_cfg.answer_hash.clone(),
-            answer_salt: recovery_cfg.answer_salt.clone(),
+            answer_hash: new_answer_hash,
+            answer_salt: new_answer_salt,
             master_key_blob: blob,
             master_key_blob_nonce: nonce,
-            master_key_blob_salt: salt,
+            master_key_blob_salt: blob_salt,
         });
         config::save_config(&cfg)?;
     }

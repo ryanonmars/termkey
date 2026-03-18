@@ -12,7 +12,6 @@ pub struct EntryTable {
     entries: Vec<EntryMeta>,
     selected: usize,
     filter: String,
-    scroll_offset: usize,
     number_buffer: String,
 }
 
@@ -22,7 +21,6 @@ impl EntryTable {
             entries,
             selected: 0,
             filter: String::new(),
-            scroll_offset: 0,
             number_buffer: String::new(),
         }
     }

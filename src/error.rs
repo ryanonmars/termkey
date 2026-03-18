@@ -26,6 +26,9 @@ pub enum TermKeyError {
     #[error("Passwords do not match.")]
     PasswordMismatch,
 
+    #[error("Secrets do not match. Please enter the same value twice.")]
+    SecretMismatch,
+
     #[error("Password cannot be empty.")]
     EmptyPassword,
 
