@@ -1,3 +1,4 @@
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -6,22 +7,34 @@ use arboard::Clipboard;
 use crate::error::{CryptoKeeperError, Result};
 
 /// Copy text to clipboard and spawn a background thread to clear it after `clear_after` seconds.
+///
+/// On Linux/X11, clipboard content is owned by the process. We keep the `Clipboard` object alive
+/// in the background thread so it can respond to clipboard requests until the clear timeout.
 pub fn copy_and_clear(text: &str, clear_after_secs: u64) -> Result<()> {
-    let mut clipboard =
-        Clipboard::new().map_err(|e| CryptoKeeperError::Clipboard(e.to_string()))?;
-
-    clipboard
-        .set_text(text)
-        .map_err(|e| CryptoKeeperError::Clipboard(e.to_string()))?;
-
-    // Spawn a background thread to clear the clipboard
+    let text_owned = text.to_string();
     let duration = Duration::from_secs(clear_after_secs);
+    let (tx, rx) = mpsc::channel::<std::result::Result<(), String>>();
+
     thread::spawn(move || {
-        thread::sleep(duration);
-        if let Ok(mut cb) = Clipboard::new() {
-            let _ = cb.set_text(String::new());
+        let mut clipboard = match Clipboard::new() {
+            Ok(cb) => cb,
+            Err(e) => {
+                let _ = tx.send(Err(e.to_string()));
+                return;
+            }
+        };
+        if let Err(e) = clipboard.set_text(&text_owned) {
+            let _ = tx.send(Err(e.to_string()));
+            return;
         }
+        // Signal success before sleeping so the caller returns immediately.
+        let _ = tx.send(Ok(()));
+        // Keep `clipboard` alive to serve X11 selection requests until we clear.
+        thread::sleep(duration);
+        let _ = clipboard.set_text(String::new());
     });
 
-    Ok(())
+    rx.recv()
+        .map_err(|_| CryptoKeeperError::Clipboard("clipboard thread crashed".to_string()))?
+        .map_err(|e| CryptoKeeperError::Clipboard(e))
 }
