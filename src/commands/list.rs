@@ -1,7 +1,7 @@
 use colored::{ColoredString, Colorize};
 use dialoguer::Select;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui;
 use crate::ui::borders::{print_table_box, truncate_display};
 use crate::vault::model::{EntryMeta, SecretType};
@@ -151,7 +151,7 @@ fn print_meta_table(meta: &[EntryMeta], filter: Option<&str>) -> Result<()> {
         println!("{}", "No entries stored yet.".dimmed());
         println!(
             "{}",
-            "Use `cryptokeeper add` to store your first key or phrase.".dimmed()
+            "Use `termkey add` to store your first key or phrase.".dimmed()
         );
         return Ok(());
     }
@@ -188,7 +188,7 @@ fn interactive_loop(filter: Option<&str>) -> Result<()> {
             println!("{}", "No entries stored yet.".dimmed());
             println!(
                 "{}",
-            "Use `cryptokeeper add` to store your first key or phrase.".dimmed()
+            "Use `termkey add` to store your first key or phrase.".dimmed()
         );
             return Ok(());
         }
@@ -225,7 +225,7 @@ fn interactive_loop(filter: Option<&str>) -> Result<()> {
             .items(&items)
             .default(0)
             .interact_opt()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         let Some(idx) = selection else {
             return Ok(());
@@ -246,7 +246,7 @@ fn interactive_loop(filter: Option<&str>) -> Result<()> {
             .items(actions)
             .default(0)
             .interact_opt()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         let Some(action_idx) = action else {
             continue;

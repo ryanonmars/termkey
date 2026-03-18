@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use arboard::Clipboard;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 
 /// Copy text to clipboard and spawn a background thread to clear it after `clear_after` seconds.
 ///
@@ -35,6 +35,6 @@ pub fn copy_and_clear(text: &str, clear_after_secs: u64) -> Result<()> {
     });
 
     rx.recv()
-        .map_err(|_| CryptoKeeperError::Clipboard("clipboard thread crashed".to_string()))?
-        .map_err(|e| CryptoKeeperError::Clipboard(e))
+        .map_err(|_| TermKeyError::Clipboard("clipboard thread crashed".to_string()))?
+        .map_err(|e| TermKeyError::Clipboard(e))
 }

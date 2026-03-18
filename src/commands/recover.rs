@@ -1,7 +1,7 @@
 use crate::config;
 use crate::config::model::RECOVERY_QUESTIONS;
 use crate::crypto::recovery;
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::{print_error, print_success};
 use crate::ui::theme::heading;
 use crate::vault::storage;
@@ -14,11 +14,11 @@ pub fn run() -> Result<()> {
     let recovery = cfg
         .recovery
         .as_ref()
-        .ok_or(CryptoKeeperError::RecoveryNotConfigured)?;
+        .ok_or(TermKeyError::RecoveryNotConfigured)?;
 
     let question = RECOVERY_QUESTIONS
         .get(recovery.question_index as usize)
-        .ok_or_else(|| CryptoKeeperError::RecoveryFailed("Invalid question index".into()))?;
+        .ok_or_else(|| TermKeyError::RecoveryFailed("Invalid question index".into()))?;
 
     println!();
     println!("  {}", heading("Password Recovery"));
@@ -31,13 +31,13 @@ pub fn run() -> Result<()> {
     let master_key = loop {
         attempts += 1;
         if attempts > MAX_ATTEMPTS {
-            return Err(CryptoKeeperError::RecoveryFailed(
+            return Err(TermKeyError::RecoveryFailed(
                 "Too many failed attempts.".into(),
             ));
         }
 
         let answer = Zeroizing::new(
-            rpassword::prompt_password("Your answer: ").map_err(CryptoKeeperError::Io)?,
+            rpassword::prompt_password("Your answer: ").map_err(TermKeyError::Io)?,
         );
 
         let normalized = recovery::normalize_answer(&answer);
@@ -81,7 +81,7 @@ pub fn run() -> Result<()> {
         let normalized_answer = {
             let answer = Zeroizing::new(
                 rpassword::prompt_password("Re-enter recovery answer to update recovery: ")
-                    .map_err(CryptoKeeperError::Io)?,
+                    .map_err(TermKeyError::Io)?,
             );
             recovery::normalize_answer(&answer)
         };

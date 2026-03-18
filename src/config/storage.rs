@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::model::Config;
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 
-/// Get the config file path (~/.cryptokeeper/config.json).
+/// Get the config file path (~/.termkey/config.json).
 pub fn config_path() -> PathBuf {
     crate::vault::storage::vault_dir().join("config.json")
 }
@@ -16,7 +16,7 @@ pub fn load_config_from(path: &Path) -> Result<Config> {
     }
     let data = fs::read_to_string(path)?;
     let config: Config =
-        serde_json::from_str(&data).map_err(|e| CryptoKeeperError::ConfigError(e.to_string()))?;
+        serde_json::from_str(&data).map_err(|e| TermKeyError::ConfigError(e.to_string()))?;
     Ok(config)
 }
 
@@ -34,7 +34,7 @@ pub fn save_config_to(config: &Config, path: &Path) -> Result<()> {
     }
 
     let json = serde_json::to_string_pretty(config)
-        .map_err(|e| CryptoKeeperError::ConfigError(e.to_string()))?;
+        .map_err(|e| TermKeyError::ConfigError(e.to_string()))?;
 
     let temp_path = path.with_extension("tmp");
     fs::write(&temp_path, json.as_bytes())?;

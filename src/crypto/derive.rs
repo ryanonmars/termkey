@@ -1,4 +1,4 @@
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::vault::model::SecretType;
 
 /// Derive a public address from a secret (private key or seed phrase).
@@ -39,9 +39,9 @@ pub fn derive_address(
 fn parse_hex_key(secret: &str) -> Result<[u8; 32]> {
     let hex_str = secret.trim().strip_prefix("0x").unwrap_or(secret.trim());
     let bytes = hex::decode(hex_str)
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid hex key: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid hex key: {}", e)))?;
     if bytes.len() != 32 {
-        return Err(CryptoKeeperError::DerivationFailed(format!(
+        return Err(TermKeyError::DerivationFailed(format!(
             "Expected 32 bytes, got {}",
             bytes.len()
         )));
@@ -70,7 +70,7 @@ fn derive_eth_from_privkey(secret: &str) -> Result<String> {
     use k256::ecdsa::SigningKey;
     let key_bytes = parse_hex_key(secret)?;
     let signing_key = SigningKey::from_bytes((&key_bytes).into())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid ETH private key: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid ETH private key: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
     let point = verifying_key.to_encoded_point(false);
     Ok(eth_address_from_pubkey_bytes(point.as_bytes()))
@@ -80,7 +80,7 @@ fn derive_eth_from_privkey(secret: &str) -> Result<String> {
 fn derive_eth_from_seed(secret: &str) -> Result<String> {
     use k256::ecdsa::SigningKey;
     let mnemonic = bip39::Mnemonic::parse(secret.trim())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
     let seed = mnemonic.to_seed("");
 
     // BIP32 derivation: m/44'/60'/0'/0/0
@@ -94,7 +94,7 @@ fn derive_eth_from_seed(secret: &str) -> Result<String> {
     ])?;
 
     let signing_key = SigningKey::from_bytes((&key_bytes).into())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("BIP32 key error: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("BIP32 key error: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
     let point = verifying_key.to_encoded_point(false);
     Ok(eth_address_from_pubkey_bytes(point.as_bytes()))
@@ -109,12 +109,12 @@ fn derive_btc_from_privkey(secret: &str) -> Result<String> {
     use std::str::FromStr;
 
     let privkey = PrivateKey::from_wif(secret.trim())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid WIF key: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid WIF key: {}", e)))?;
 
     let secp = bitcoin::secp256k1::Secp256k1::new();
     let pubkey = privkey.public_key(&secp);
     let compressed = CompressedPublicKey::from_str(&pubkey.to_string())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Compressed key error: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Compressed key error: {}", e)))?;
 
     let address = Address::p2wpkh(&compressed, Network::Bitcoin);
     Ok(address.to_string())
@@ -126,7 +126,7 @@ fn derive_btc_from_seed(secret: &str) -> Result<String> {
     use std::str::FromStr;
 
     let mnemonic = bip39::Mnemonic::parse(secret.trim())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
     let seed = mnemonic.to_seed("");
 
     // BIP32 derivation: m/84'/0'/0'/0/0 for native segwit
@@ -140,10 +140,10 @@ fn derive_btc_from_seed(secret: &str) -> Result<String> {
 
     let secp = bitcoin::secp256k1::Secp256k1::new();
     let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&key_bytes)
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid derived key: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid derived key: {}", e)))?;
     let pubkey = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let compressed = CompressedPublicKey::from_str(&pubkey.to_string())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Compressed key error: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Compressed key error: {}", e)))?;
 
     let address = Address::p2wpkh(&compressed, Network::Bitcoin);
     Ok(address.to_string())
@@ -198,7 +198,7 @@ fn derive_sol_from_privkey(secret: &str) -> Result<String> {
         }
     }
 
-    Err(CryptoKeeperError::DerivationFailed(
+    Err(TermKeyError::DerivationFailed(
         "Unrecognized Solana private key format. Expected base58, hex, or JSON array.".into(),
     ))
 }
@@ -208,7 +208,7 @@ fn derive_sol_from_seed(secret: &str) -> Result<String> {
     use ed25519_dalek::SigningKey;
 
     let mnemonic = bip39::Mnemonic::parse(secret.trim())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid mnemonic: {}", e)))?;
     let seed = mnemonic.to_seed("");
 
     // SLIP-10 / BIP44-Ed25519 derivation: m/44'/501'/0'/0'
@@ -238,7 +238,7 @@ fn slip10_derive_ed25519(seed: &[u8], path: &[u32]) -> Result<[u8; 32]> {
 
     // Master key derivation
     let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("HMAC error: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("HMAC error: {}", e)))?;
     mac.update(seed);
     let result = mac.finalize().into_bytes();
 
@@ -250,13 +250,13 @@ fn slip10_derive_ed25519(seed: &[u8], path: &[u32]) -> Result<[u8; 32]> {
     // Child key derivation (SLIP-10 Ed25519 only supports hardened)
     for &index in path {
         if index & 0x80000000 == 0 {
-            return Err(CryptoKeeperError::DerivationFailed(
+            return Err(TermKeyError::DerivationFailed(
                 "SLIP-10 Ed25519 only supports hardened derivation".into(),
             ));
         }
 
         let mut mac = HmacSha512::new_from_slice(&chain_code)
-            .map_err(|e| CryptoKeeperError::DerivationFailed(format!("HMAC error: {}", e)))?;
+            .map_err(|e| TermKeyError::DerivationFailed(format!("HMAC error: {}", e)))?;
         mac.update(&[0x00]);
         mac.update(&key);
         mac.update(&index.to_be_bytes());
@@ -282,7 +282,7 @@ fn bip32_derive_secp256k1(seed: &[u8], path: &[u32]) -> Result<[u8; 32]> {
 
     // Master key derivation
     let mut mac = HmacSha512::new_from_slice(b"Bitcoin seed")
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("HMAC error: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("HMAC error: {}", e)))?;
     mac.update(seed);
     let result = mac.finalize().into_bytes();
 
@@ -294,7 +294,7 @@ fn bip32_derive_secp256k1(seed: &[u8], path: &[u32]) -> Result<[u8; 32]> {
     // Child key derivation
     for &index in path {
         let mut mac = HmacSha512::new_from_slice(&chain_code)
-            .map_err(|e| CryptoKeeperError::DerivationFailed(format!("HMAC error: {}", e)))?;
+            .map_err(|e| TermKeyError::DerivationFailed(format!("HMAC error: {}", e)))?;
 
         if index & 0x80000000 != 0 {
             // Hardened child
@@ -322,7 +322,7 @@ fn bip32_derive_secp256k1(seed: &[u8], path: &[u32]) -> Result<[u8; 32]> {
 fn secp256k1_pubkey_compressed(key: &[u8; 32]) -> Result<[u8; 33]> {
     use k256::ecdsa::SigningKey;
     let signing_key = SigningKey::from_bytes(key.into())
-        .map_err(|e| CryptoKeeperError::DerivationFailed(format!("Invalid key: {}", e)))?;
+        .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid key: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
     let point = verifying_key.to_encoded_point(true);
     let bytes = point.as_bytes();

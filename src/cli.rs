@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "cryptokeeper",
-    about = "Encrypted storage for cryptocurrency private keys and seed phrases",
+    name = "termkey",
+    about = "Encrypted storage for private keys and seed phrases",
     version
 )]
 pub struct Cli {

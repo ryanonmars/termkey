@@ -1,6 +1,6 @@
 use colored::{ColoredString, Colorize};
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::{print_table_box, truncate_display};
 use crate::vault::model::{EntryMeta, SecretType, VaultData};
 use crate::vault::storage;
@@ -36,7 +36,7 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
         .collect();
 
     if matches.is_empty() {
-        return Err(CryptoKeeperError::NoSearchResults(query.to_string()));
+        return Err(TermKeyError::NoSearchResults(query.to_string()));
     }
 
     let headers = &["#", "NAME", "NETWORK", "TYPE", "USERNAME", "ADDRESS / URL"];

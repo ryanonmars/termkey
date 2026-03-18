@@ -14,16 +14,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            asset_name: cryptokeeper-linux-x86_64
+            asset_name: termkey-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset_name: cryptokeeper-macos-x86_64
+            asset_name: termkey-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset_name: cryptokeeper-macos-aarch64
+            asset_name: termkey-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset_name: cryptokeeper-windows-x86_64
+            asset_name: termkey-windows-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -41,14 +41,14 @@ jobs:
         shell: pwsh
         run: |
           cd target/${{ matrix.target }}/release
-          Compress-Archive -Path cryptokeeper.exe -DestinationPath ${{ github.workspace }}/${{ matrix.asset_name }}.zip
+          Compress-Archive -Path termkey.exe -DestinationPath ${{ github.workspace }}/${{ matrix.asset_name }}.zip
 
       - name: Prepare asset (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
-          zip ${{ matrix.asset_name }}.zip cryptokeeper
+          zip ${{ matrix.asset_name }}.zip termkey
           mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
 
       - name: Upload artifact
@@ -75,7 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/*/cryptokeeper-*.zip
+            artifacts/*/termkey-*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,54 +95,54 @@ jobs:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
-          SHA_LINUX=$(sha256sum artifacts/cryptokeeper-linux-x86_64/cryptokeeper-linux-x86_64.zip | awk '{print $1}')
-          SHA_MACOS_X86=$(sha256sum artifacts/cryptokeeper-macos-x86_64/cryptokeeper-macos-x86_64.zip | awk '{print $1}')
-          SHA_MACOS_ARM=$(sha256sum artifacts/cryptokeeper-macos-aarch64/cryptokeeper-macos-aarch64.zip | awk '{print $1}')
+          SHA_LINUX=$(sha256sum artifacts/termkey-linux-x86_64/termkey-linux-x86_64.zip | awk '{print $1}')
+          SHA_MACOS_X86=$(sha256sum artifacts/termkey-macos-x86_64/termkey-macos-x86_64.zip | awk '{print $1}')
+          SHA_MACOS_ARM=$(sha256sum artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip | awk '{print $1}')
 
-          git clone https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/ryanonmars/homebrew-cryptokeeper.git tap
+          git clone https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/ryanonmars/homebrew-termkey.git tap
           cd tap
 
           VER=${VERSION#v}
 
-          cat > Formula/cryptokeeper.rb << EOF
+          cat > Formula/termkey.rb << EOF
           # typed: false
           # frozen_string_literal: true
 
-          class Cryptokeeper < Formula
-            desc "CLI encrypted storage for cryptocurrency private keys and seed phrases"
-            homepage "https://github.com/ryanonmars/CryptoKeeper"
+          class Termkey < Formula
+            desc "CLI encrypted storage for private keys and seed phrases"
+            homepage "https://github.com/ryanonmars/TermKey"
             version "${VER}"
             license "MIT"
 
-            url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/cryptokeeper-linux-x86_64.zip"
+            url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-linux-x86_64.zip"
             sha256 "${SHA_LINUX}"
 
             on_macos do
               on_intel do
-                url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/cryptokeeper-macos-x86_64.zip"
+                url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-macos-x86_64.zip"
                 sha256 "${SHA_MACOS_X86}"
               end
 
               on_arm do
-                url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/cryptokeeper-macos-aarch64.zip"
+                url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-macos-aarch64.zip"
                 sha256 "${SHA_MACOS_ARM}"
               end
             end
 
             def install
-              bin.install "cryptokeeper"
+              bin.install "termkey"
             end
 
             test do
-              assert_match "Encrypted storage for cryptocurrency", shell_output("#{bin}/cryptokeeper --help")
+              assert_match "Encrypted storage for", shell_output("#{bin}/termkey --help")
             end
           end
           EOF
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/cryptokeeper.rb
-          git commit -m "cryptokeeper ${VER}"
+          git add Formula/termkey.rb
+          git commit -m "termkey ${VER}"
           git push
 
   update-winget:
@@ -153,7 +153,7 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: cryptokeeper-windows-x86_64
+          name: termkey-windows-x86_64
           path: artifacts
 
       - name: Download wingetcreate
@@ -167,8 +167,8 @@ jobs:
           WINGET_PAT: ${{ secrets.WINGET_PAT }}
         run: |
           $version = $env:GITHUB_REF_NAME -replace '^v', ''
-          $url = "https://github.com/ryanonmars/CryptoKeeper/releases/download/$env:GITHUB_REF_NAME/cryptokeeper-windows-x86_64.zip"
-          .\wingetcreate.exe update RyanOnMars.CryptoKeeper `
+          $url = "https://github.com/ryanonmars/TermKey/releases/download/$env:GITHUB_REF_NAME/termkey-windows-x86_64.zip"
+          .\wingetcreate.exe update RyanOnMars.TermKey `
             --version $version `
             --urls $url `
             --token $env:WINGET_PAT `

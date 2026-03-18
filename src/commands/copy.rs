@@ -1,7 +1,7 @@
 use colored::Colorize;
 
 use crate::clipboard;
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::vault::model::VaultData;
 use crate::vault::storage;
@@ -18,7 +18,7 @@ pub fn run(name: &str) -> Result<()> {
 pub fn run_with_vault(vault: &VaultData, name: &str, wait: bool) -> Result<()> {
     let entry = vault
         .find_entry_by_id(name)
-        .ok_or_else(|| CryptoKeeperError::EntryNotFound(name.to_string()))?;
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     clipboard::copy_and_clear(&entry.secret, CLEAR_AFTER_SECS)?;
 

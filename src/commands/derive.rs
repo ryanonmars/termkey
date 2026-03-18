@@ -1,4 +1,4 @@
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::vault::storage;
 
@@ -7,7 +7,7 @@ pub fn run(name: &str) -> Result<()> {
 
     let entry = vault
         .find_entry_mut_by_id(name)
-        .ok_or_else(|| CryptoKeeperError::EntryNotFound(name.to_string()))?;
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     #[cfg(any(feature = "derive-eth", feature = "derive-btc", feature = "derive-sol"))]
     {
@@ -28,7 +28,7 @@ pub fn run(name: &str) -> Result<()> {
                 );
             }
             Err(e) => {
-                return Err(CryptoKeeperError::DerivationFailed(e.to_string()));
+                return Err(TermKeyError::DerivationFailed(e.to_string()));
             }
         }
     }

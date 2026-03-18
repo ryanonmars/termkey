@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::vault::model::{BackupHeader, EntryMeta, VaultData, VaultHeader};
 
-/// Get the vault directory path, respecting CRYPTOKEEPER_VAULT_DIR env var.
+/// Get the vault directory path, respecting TERMKEY_VAULT_DIR env var.
 pub fn vault_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("CRYPTOKEEPER_VAULT_DIR") {
+    if let Ok(dir) = std::env::var("TERMKEY_VAULT_DIR") {
         PathBuf::from(dir)
     } else {
         dirs_fallback()
@@ -19,7 +19,19 @@ fn dirs_fallback() -> PathBuf {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".cryptokeeper")
+    PathBuf::from(home).join(".termkey")
+}
+
+/// Migrate vault from ~/.cryptokeeper to ~/.termkey if needed (one-time, on first run).
+pub fn migrate_vault_if_needed() {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    let old_dir = std::path::PathBuf::from(&home).join(".cryptokeeper");
+    let new_dir = std::path::PathBuf::from(&home).join(".termkey");
+    if !new_dir.exists() && old_dir.exists() {
+        let _ = fs::rename(&old_dir, &new_dir);
+    }
 }
 
 pub fn vault_path() -> PathBuf {
@@ -97,8 +109,8 @@ pub fn read_metadata(path: &Path) -> Result<Vec<EntryMeta>> {
     if data.len() < 12 + meta_len {
         return Ok(Vec::new());
     }
-    let meta_json = std::str::from_utf8(&data[12..12 + meta_len]).map_err(|_| CryptoKeeperError::InvalidVaultFormat)?;
-    let meta: Vec<EntryMeta> = serde_json::from_str(meta_json).map_err(|_| CryptoKeeperError::InvalidVaultFormat)?;
+    let meta_json = std::str::from_utf8(&data[12..12 + meta_len]).map_err(|_| TermKeyError::InvalidVaultFormat)?;
+    let meta: Vec<EntryMeta> = serde_json::from_str(meta_json).map_err(|_| TermKeyError::InvalidVaultFormat)?;
     Ok(meta)
 }
 
@@ -106,7 +118,7 @@ pub fn read_metadata(path: &Path) -> Result<Vec<EntryMeta>> {
 pub fn read_vault_metadata() -> Result<Vec<EntryMeta>> {
     let path = vault_path();
     if !path.exists() {
-        return Err(CryptoKeeperError::VaultNotFound);
+        return Err(TermKeyError::VaultNotFound);
     }
     read_metadata(&path)
 }
@@ -186,12 +198,12 @@ fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -
     let data = fs::read(path)?;
 
     if data.len() < VaultHeader::HEADER_SIZE_V1 {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let magic = &data[0..4];
     if magic != expected_magic {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let version = u32::from_le_bytes(data[4..8].try_into().unwrap());
@@ -203,7 +215,7 @@ fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -
     };
 
     if data.len() < ct_offset {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let mut salt = [0u8; 32];
@@ -219,7 +231,7 @@ fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -
     let ct_len = u32::from_le_bytes(data[salt_offset + 68..salt_offset + 72].try_into().unwrap()) as usize;
 
     if data.len() < ct_offset + ct_len {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let ciphertext = &data[ct_offset..ct_offset + ct_len];
@@ -234,16 +246,16 @@ fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -
 /// Prompt for master password and unlock the vault.
 pub fn prompt_and_unlock() -> Result<(VaultData, Zeroizing<String>)> {
     if !vault_exists() {
-        return Err(CryptoKeeperError::VaultNotFound);
+        return Err(TermKeyError::VaultNotFound);
     }
 
     let password = Zeroizing::new(
         rpassword::prompt_password("Master password: ")
-            .map_err(|e| CryptoKeeperError::Io(e))?,
+            .map_err(|e| TermKeyError::Io(e))?,
     );
 
     if password.is_empty() {
-        return Err(CryptoKeeperError::EmptyPassword);
+        return Err(TermKeyError::EmptyPassword);
     }
 
     eprintln!("Unlocking vault...");
@@ -265,12 +277,12 @@ pub fn unlock_vault_returning_key(
     let data = fs::read(&path)?;
 
     if data.len() < VaultHeader::HEADER_SIZE_V1 {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let magic = &data[0..4];
     if magic != VaultHeader::MAGIC {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let version = u32::from_le_bytes(data[4..8].try_into().unwrap());
@@ -283,7 +295,7 @@ pub fn unlock_vault_returning_key(
 
     let ct_offset = salt_offset + 32 + 4 + 4 + 4 + 24 + 4;
     if data.len() < ct_offset {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let mut salt = [0u8; 32];
@@ -300,7 +312,7 @@ pub fn unlock_vault_returning_key(
         u32::from_le_bytes(data[salt_offset + 68..salt_offset + 72].try_into().unwrap()) as usize;
 
     if data.len() < ct_offset + ct_len {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
 
     let ciphertext = &data[ct_offset..ct_offset + ct_len];
@@ -315,11 +327,11 @@ pub fn unlock_vault_returning_key(
 /// Read vault using a pre-derived master key (for recovery flow).
 pub fn read_vault_with_key(key: &[u8; 32], raw_data: &[u8]) -> Result<VaultData> {
     if raw_data.len() < VaultHeader::HEADER_SIZE_V1 {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
     let magic = &raw_data[0..4];
     if magic != VaultHeader::MAGIC {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
     let version = u32::from_le_bytes(raw_data[4..8].try_into().unwrap());
     let salt_offset = if version == VaultHeader::FORMAT_VERSION_V2 {
@@ -330,7 +342,7 @@ pub fn read_vault_with_key(key: &[u8; 32], raw_data: &[u8]) -> Result<VaultData>
     };
     let ct_offset = salt_offset + 32 + 4 + 4 + 4 + 24 + 4;
     if raw_data.len() < ct_offset {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
     let mut nonce = [0u8; 24];
     nonce.copy_from_slice(&raw_data[salt_offset + 44..salt_offset + 68]);
@@ -338,7 +350,7 @@ pub fn read_vault_with_key(key: &[u8; 32], raw_data: &[u8]) -> Result<VaultData>
         u32::from_le_bytes(raw_data[salt_offset + 68..salt_offset + 72].try_into().unwrap())
             as usize;
     if raw_data.len() < ct_offset + ct_len {
-        return Err(CryptoKeeperError::InvalidVaultFormat);
+        return Err(TermKeyError::InvalidVaultFormat);
     }
     let ciphertext = &raw_data[ct_offset..ct_offset + ct_len];
     let plaintext = cipher::decrypt(key, &nonce, ciphertext)?;

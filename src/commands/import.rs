@@ -4,7 +4,7 @@ use colored::Colorize;
 use dialoguer::Select;
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_box;
 use crate::vault::model::VaultData;
 use crate::vault::storage;
@@ -25,7 +25,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
     let file = file.trim_matches(|c| c == '\'' || c == '"');
     let path = Path::new(file);
     if !path.exists() {
-        return Err(CryptoKeeperError::Io(std::io::Error::new(
+        return Err(TermKeyError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("File not found: {file}"),
         )));
@@ -33,7 +33,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
 
     println!();
     let backup_password = Zeroizing::new(
-        rpassword::prompt_password("Backup password: ").map_err(CryptoKeeperError::Io)?,
+        rpassword::prompt_password("Backup password: ").map_err(TermKeyError::Io)?,
     );
 
     eprintln!("Decrypting backup...");
@@ -58,7 +58,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
                 .default(0)
                 .interact()
                 .map_err(|e| {
-                    CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
                 })?;
 
             match choice {
@@ -86,7 +86,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
                     imported += 1;
                 }
                 _ => {
-                    return Err(CryptoKeeperError::Cancelled);
+                    return Err(TermKeyError::Cancelled);
                 }
             }
         } else {

@@ -3,7 +3,7 @@ use std::path::Path;
 use colored::Colorize;
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_box;
 use crate::ui::theme::heading;
 use crate::vault::model::VaultData;
@@ -25,30 +25,30 @@ pub fn run_with_vault(vault: &VaultData, directory: &str) -> Result<()> {
     println!();
 
     let export_password = Zeroizing::new(
-        rpassword::prompt_password("Backup password: ").map_err(CryptoKeeperError::Io)?,
+        rpassword::prompt_password("Backup password: ").map_err(TermKeyError::Io)?,
     );
 
     if export_password.is_empty() {
-        return Err(CryptoKeeperError::EmptyPassword);
+        return Err(TermKeyError::EmptyPassword);
     }
 
     let confirm = Zeroizing::new(
-        rpassword::prompt_password("Confirm backup password: ").map_err(CryptoKeeperError::Io)?,
+        rpassword::prompt_password("Confirm backup password: ").map_err(TermKeyError::Io)?,
     );
 
     if *export_password != *confirm {
-        return Err(CryptoKeeperError::PasswordMismatch);
+        return Err(TermKeyError::PasswordMismatch);
     }
 
     let directory = directory.trim_matches(|c| c == '\'' || c == '"');
     let dir_path = Path::new(directory);
     
     if !dir_path.exists() {
-        std::fs::create_dir_all(dir_path).map_err(CryptoKeeperError::Io)?;
+        std::fs::create_dir_all(dir_path).map_err(TermKeyError::Io)?;
     }
     
     if !dir_path.is_dir() {
-        return Err(CryptoKeeperError::Io(std::io::Error::new(
+        return Err(TermKeyError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("'{}' is not a directory", directory)
         )));

@@ -23,10 +23,8 @@ fn display_width(s: &str) -> usize {
 pub fn print_header() {
     let width = get_terminal_width() as usize;
 
-    if width >= 70 {
+    if width >= 50 {
         print_wide_header(width);
-    } else if width >= 50 {
-        print_medium_header(width);
     } else {
         print_narrow_header(width);
     }
@@ -36,31 +34,12 @@ pub fn print_header() {
 fn print_wide_header(width: usize) {
     let inner = width.saturating_sub(4); // "│ " + " │"
 
-    // Block letter art for CRYPTO
-    let crypto_lines = [
-        " ██████╗██████╗ ██╗   ██╗██████╗ ████████╗ ██████╗ ",
-        "██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔═══██╗",
-        "██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██║   ██║",
-        "██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██║   ██║",
-        "╚██████╗██║  ██║   ██║   ██║        ██║   ╚██████╔╝",
-        " ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝    ╚═════╝ ",
-    ];
-
-    // Block letter art for KEEPER (same style)
-    let keeper_lines = [
-        "██╗  ██╗███████╗███████╗██████╗ ███████╗██████╗ ",
-        "██║ ██╔╝██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗",
-        "█████╔╝ █████╗  █████╗  ██████╔╝█████╗  ██████╔╝",
-        "██╔═██╗ ██╔══╝  ██╔══╝  ██╔═══╝ ██╔══╝  ██╔══██╗",
-        "██║  ██╗███████╗███████╗██║     ███████╗██║  ██║",
-        "╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝",
-    ];
-
+    let title = "TermKey";
     let version_line = format!("v{}", VERSION);
-    let tagline = "Encrypted vault for crypto keys & seed phrases";
+    let tagline = "Encrypted vault for private keys & seed phrases";
 
     // Top border
-    let title_embed = format!(" CryptoKeeper ");
+    let title_embed = format!(" TermKey ");
     let title_dw = display_width(&title_embed);
     let remaining = (inner + 2).saturating_sub(title_dw + 1);
     println!(
@@ -75,15 +54,8 @@ fn print_wide_header(width: usize) {
     // Empty line
     print_padded_line("", inner);
 
-    // CRYPTO art lines (centered, bold cyan)
-    for line in &crypto_lines {
-        print_centered_art(line, inner);
-    }
-
-    // KEEPER art lines (centered, bold cyan)
-    for line in &keeper_lines {
-        print_centered_art(line, inner);
-    }
+    // Title (centered, bold cyan)
+    print_centered_line(&format!("{}", title.bold().cyan()), title, inner);
 
     // Empty line
     print_padded_line("", inner);
@@ -104,49 +76,8 @@ fn print_wide_header(width: usize) {
     );
 }
 
-fn print_medium_header(width: usize) {
-    let inner = width.saturating_sub(4);
-
-    let title = "CRYPTOKEEPER";
-    let version_line = format!("v{}", VERSION);
-    let tagline = "Encrypted vault for crypto keys";
-
-    // Top border
-    let remaining = (inner + 2).saturating_sub(1);
-    println!(
-        "{}{}{}",
-        dim_border("┌"),
-        dim_border(&"─".repeat(remaining)),
-        dim_border("┐")
-    );
-
-    // Empty line
-    print_padded_line("", inner);
-
-    // Title (centered, bold cyan)
-    print_centered_line(&format!("{}", title.bold().cyan()), title, inner);
-
-    // Empty line
-    print_padded_line("", inner);
-
-    // Version + tagline
-    let info = format!("{} — {}", version_line, tagline);
-    print_centered_line(&format!("{}", info.dimmed()), &info, inner);
-
-    // Empty line
-    print_padded_line("", inner);
-
-    // Bottom border
-    println!(
-        "{}{}{}",
-        dim_border("└"),
-        dim_border(&"─".repeat(inner + 2)),
-        dim_border("┘")
-    );
-}
-
 fn print_narrow_header(width: usize) {
-    let text = format!("CRYPTOKEEPER v{}", VERSION);
+    let text = format!("TermKey v{}", VERSION);
     let text_dw = display_width(&text);
     let side = width.saturating_sub(text_dw + 2) / 2;
     let right_side = width.saturating_sub(text_dw + 2 + side);
@@ -157,21 +88,6 @@ fn print_narrow_header(width: usize) {
         text.cyan().bold(),
         " ",
         dim_border(&"─".repeat(right_side))
-    );
-}
-
-/// Print a centered line (no ANSI codes in input) within bordered row.
-fn print_centered_art(line: &str, inner: usize) {
-    let art_width = display_width(line);
-    let left_pad = inner.saturating_sub(art_width) / 2;
-    let right_pad = inner.saturating_sub(art_width + left_pad);
-    println!(
-        "{} {}{}{} {}",
-        dim_border("│"),
-        " ".repeat(left_pad),
-        line.bold().cyan(),
-        " ".repeat(right_pad),
-        dim_border("│")
     );
 }
 
@@ -203,83 +119,26 @@ fn print_centered_line(styled: &str, raw: &str, inner: usize) {
 
 pub fn render_header(frame: &mut Frame, area: Rect) {
     let width = area.width as usize;
-    
-    let content = if width >= 70 {
+
+    let content = if width >= 50 {
         build_wide_header()
-    } else if width >= 50 {
-        build_medium_header()
     } else {
         build_narrow_header()
     };
-    
+
     frame.render_widget(content, area);
 }
 
 fn build_wide_header() -> Paragraph<'static> {
-    let crypto_lines = [
-        " ██████╗██████╗ ██╗   ██╗██████╗ ████████╗ ██████╗ ",
-        "██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔═══██╗",
-        "██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██║   ██║",
-        "██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██║   ██║",
-        "╚██████╗██║  ██║   ██║   ██║        ██║   ╚██████╔╝",
-        " ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝    ╚═════╝ ",
-    ];
-
-    let keeper_lines = [
-        "██╗  ██╗███████╗███████╗██████╗ ███████╗██████╗ ",
-        "██║ ██╔╝██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗",
-        "█████╔╝ █████╗  █████╗  ██████╔╝█████╗  ██████╔╝",
-        "██╔═██╗ ██╔══╝  ██╔══╝  ██╔═══╝ ██╔══╝  ██╔══██╗",
-        "██║  ██╗███████╗███████╗██║     ███████╗██║  ██║",
-        "╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝",
-    ];
-
+    let title = "TermKey";
     let version_line = format!("v{}", VERSION);
-    let tagline = "Encrypted vault for crypto keys & seed phrases";
-    let info = format!("{} — {}", version_line, tagline);
-
-    let art_style = Style::default()
-        .fg(Color::Cyan)
-        .add_modifier(Modifier::BOLD);
-    let dim_style = Style::default()
-        .fg(Color::DarkGray);
-
-    let mut lines = vec![Line::from("")];
-    
-    for line in &crypto_lines {
-        lines.push(Line::from(Span::styled(*line, art_style)));
-    }
-    
-    for line in &keeper_lines {
-        lines.push(Line::from(Span::styled(*line, art_style)));
-    }
-    
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(info, dim_style)));
-    lines.push(Line::from(""));
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" CryptoKeeper ")
-        .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .border_style(Style::default().fg(Color::DarkGray));
-
-    Paragraph::new(lines)
-        .block(block)
-        .alignment(Alignment::Center)
-}
-
-fn build_medium_header() -> Paragraph<'static> {
-    let title = "CRYPTOKEEPER";
-    let version_line = format!("v{}", VERSION);
-    let tagline = "Encrypted vault for crypto keys";
+    let tagline = "Encrypted vault for private keys & seed phrases";
     let info = format!("{} — {}", version_line, tagline);
 
     let title_style = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
-    let dim_style = Style::default()
-        .fg(Color::DarkGray);
+    let dim_style = Style::default().fg(Color::DarkGray);
 
     let lines = vec![
         Line::from(""),
@@ -291,6 +150,8 @@ fn build_medium_header() -> Paragraph<'static> {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .title(" TermKey ")
+        .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .border_style(Style::default().fg(Color::DarkGray));
 
     Paragraph::new(lines)
@@ -299,8 +160,8 @@ fn build_medium_header() -> Paragraph<'static> {
 }
 
 fn build_narrow_header() -> Paragraph<'static> {
-    let text = format!("CRYPTOKEEPER v{}", VERSION);
-    
+    let text = format!("TermKey v{}", VERSION);
+
     let style = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);

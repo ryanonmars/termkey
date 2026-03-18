@@ -1,7 +1,7 @@
 use colored::Colorize;
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_box;
 use crate::ui::theme::heading;
 use crate::vault::model::VaultData;
@@ -9,30 +9,30 @@ use crate::vault::storage;
 
 pub fn run() -> Result<()> {
     if storage::vault_exists() {
-        return Err(CryptoKeeperError::VaultAlreadyExists(
+        return Err(TermKeyError::VaultAlreadyExists(
             storage::vault_path().display().to_string(),
         ));
     }
 
-    println!("{}", heading("Initializing new CryptoKeeper vault..."));
+    println!("{}", heading("Initializing new TermKey vault..."));
     println!();
 
     let password = Zeroizing::new(
         rpassword::prompt_password("Choose a master password: ")
-            .map_err(CryptoKeeperError::Io)?,
+            .map_err(TermKeyError::Io)?,
     );
 
     if password.is_empty() {
-        return Err(CryptoKeeperError::EmptyPassword);
+        return Err(TermKeyError::EmptyPassword);
     }
 
     let confirm = Zeroizing::new(
         rpassword::prompt_password("Confirm master password: ")
-            .map_err(CryptoKeeperError::Io)?,
+            .map_err(TermKeyError::Io)?,
     );
 
     if *password != *confirm {
-        return Err(CryptoKeeperError::PasswordMismatch);
+        return Err(TermKeyError::PasswordMismatch);
     }
 
     storage::ensure_vault_dir()?;
@@ -50,7 +50,7 @@ pub fn run() -> Result<()> {
         String::new(),
         format!(
             "{}",
-            "Use `cryptokeeper add` to store your first key or phrase.".dimmed()
+            "Use `termkey add` to store your first key or phrase.".dimmed()
         ),
     ];
     println!();

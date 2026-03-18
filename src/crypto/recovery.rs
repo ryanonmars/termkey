@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 
 pub const MIN_ANSWER_LENGTH: usize = 3;
 
@@ -69,9 +69,9 @@ pub fn decrypt_recovery_blob(
     let nonce_len = nonce.len().min(24);
     nonce_arr[..nonce_len].copy_from_slice(&nonce[..nonce_len]);
     let plaintext = cipher::decrypt(&*recovery_key, &nonce_arr, blob)
-        .map_err(|_| CryptoKeeperError::RecoveryFailed("Incorrect answer or corrupted blob".into()))?;
+        .map_err(|_| TermKeyError::RecoveryFailed("Incorrect answer or corrupted blob".into()))?;
     if plaintext.len() != 32 {
-        return Err(CryptoKeeperError::RecoveryFailed(
+        return Err(TermKeyError::RecoveryFailed(
             "Invalid master key length in recovery blob".into(),
         ));
     }

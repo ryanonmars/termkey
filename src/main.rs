@@ -15,6 +15,7 @@ use crypto::secure;
 
 fn main() {
     secure::harden_process();
+    vault::storage::migrate_vault_if_needed();
 
     let cli = Cli::parse();
 
@@ -30,7 +31,7 @@ fn main() {
         let default_cfg = config::Config::default();
         if cfg.vault_path != default_cfg.vault_path {
             if let Some(parent) = std::path::Path::new(&cfg.vault_path).parent() {
-                std::env::set_var("CRYPTOKEEPER_VAULT_DIR", parent);
+                std::env::set_var("TERMKEY_VAULT_DIR", parent);
             }
         }
     }

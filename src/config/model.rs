@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Path to vault file (default: ~/.cryptokeeper/vault.ck)
+    /// Path to vault file (default: ~/.termkey/vault.ck)
     #[serde(default = "default_vault_path")]
     pub vault_path: String,
 
@@ -23,7 +23,7 @@ fn default_vault_path() -> String {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    format!("{}/.cryptokeeper/vault.ck", home)
+    format!("{}/.termkey/vault.ck", home)
 }
 
 fn default_clipboard_timeout() -> u64 {
@@ -78,7 +78,7 @@ mod tests {
         assert_eq!(config.clipboard_timeout_secs, 10);
         assert!(!config.first_run_complete);
         assert!(config.recovery.is_none());
-        assert!(config.vault_path.ends_with(".cryptokeeper/vault.ck"));
+        assert!(config.vault_path.ends_with(".termkey/vault.ck"));
     }
 
     #[test]

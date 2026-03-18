@@ -1,6 +1,6 @@
 /target
 *.ck
-.cryptokeeper/
+.termkey/
 
 .DS_Store
 .idea/

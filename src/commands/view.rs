@@ -1,7 +1,7 @@
 use colored::Colorize;
 use dialoguer::{Confirm, Select};
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_box;
 use crate::ui::theme::clear_screen;
 use crate::vault::model::{SecretType, VaultData};
@@ -16,7 +16,7 @@ pub fn run(name: &str) -> Result<()> {
 pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
     let entry = vault
         .find_entry_by_id(name)
-        .ok_or_else(|| CryptoKeeperError::EntryNotFound(name.to_string()))?;
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     let mut lines = vec![
         format!("{:<16} {}", "Name:".bold(), entry.name.cyan()),
@@ -58,7 +58,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
         .with_prompt("Reveal secret?")
         .default(false)
         .interact()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     if reveal {
         println!();
@@ -71,7 +71,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
             .items(options)
             .default(0)
             .interact()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         
         if clear_choice == 0 {
             use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveTo};
@@ -79,7 +79,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
                 std::io::stdout(),
                 Clear(ClearType::All),
                 MoveTo(0, 0)
-            ).map_err(CryptoKeeperError::Io)?;
+            ).map_err(TermKeyError::Io)?;
         }
     }
 

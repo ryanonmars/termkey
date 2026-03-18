@@ -7,7 +7,7 @@ pub fn run(show: bool, clipboard_timeout: Option<u64>) -> Result<()> {
 
     if show || clipboard_timeout.is_none() {
         println!();
-        println!("  CryptoKeeper Configuration");
+        println!("  TermKey Configuration");
         println!("  ─────────────────────────");
         println!("  Vault path:         {}", cfg.vault_path);
         println!("  Clipboard timeout:  {} seconds", cfg.clipboard_timeout_secs);

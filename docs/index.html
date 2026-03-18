@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CryptoKeeper — Encrypted Vault for Private Keys</title>
-  <meta name="description" content="CryptoKeeper is a local-only, encrypted CLI vault for cryptocurrency private keys and seed phrases. XChaCha20-Poly1305 + Argon2id. Zero cloud. Zero trust.">
+  <title>TermKey — Encrypted Vault for Private Keys</title>
+  <meta name="description" content="TermKey is a local-only, encrypted CLI vault for private keys and seed phrases. XChaCha20-Poly1305 + Argon2id. Zero cloud. Zero trust.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -577,14 +577,14 @@
 <nav>
   <div class="container">
     <a href="#" class="nav-logo">
-      <img src="Cryptokeeper-icon-white.png" alt="CryptoKeeper" class="nav-icon">
+      <img src="Cryptokeeper-icon-white.png" alt="TermKey" class="nav-icon">
     </a>
     <ul>
       <li><a href="#features">security</a></li>
       <li><a href="#install">install</a></li>
       <li><a href="#quickstart">usage</a></li>
       <li><a href="#commands">commands</a></li>
-      <li><a href="https://github.com/ryanonmars/CryptoKeeper" target="_blank" rel="noopener" class="nav-gh">github ↗</a></li>
+      <li><a href="https://github.com/ryanonmars/TermKey" target="_blank" rel="noopener" class="nav-gh">github ↗</a></li>
     </ul>
   </div>
 </nav>
@@ -594,13 +594,13 @@
   <div class="container">
     <div class="hero-inner">
 
-      <img src="Cryptokeeper-white.png" alt="CryptoKeeper" class="hero-logo">
+      <img src="Cryptokeeper-white.png" alt="TermKey" class="hero-logo">
 
       <p class="hero-tag">v0.2.5 · local-only TUI vault</p>
 
       <div class="hero-ctas">
         <a href="#install" class="btn btn-primary">↓ &thinsp;download</a>
-        <a href="https://github.com/ryanonmars/CryptoKeeper" target="_blank" rel="noopener" class="btn btn-secondary">github ↗</a>
+        <a href="https://github.com/ryanonmars/TermKey" target="_blank" rel="noopener" class="btn btn-secondary">github ↗</a>
       </div>
 
     </div>
@@ -634,7 +634,7 @@
         <div class="feat-row">
           <span class="feat-check">✓</span>
           <div class="feat-content">
-            <span class="f-key">~/.cryptokeeper/</span>
+            <span class="f-key">~/.termkey/</span>
             <span class="f-val">local-only storage</span>
             <span class="f-desc">no network access, no cloud sync</span>
           </div>
@@ -648,7 +648,7 @@
 <section id="install">
   <div class="container">
     <div class="sec-label">installation</div>
-    <h2 class="sec-title">get cryptokeeper</h2>
+    <h2 class="sec-title">get termkey</h2>
 
     <div class="os-tabs">
       <button class="os-tab active" onclick="switchOS('macos',this)">macOS</button>
@@ -667,8 +667,8 @@
           <p class="install-intro">Install via Homebrew — updates with <code>brew upgrade</code>.</p>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
-            <code class="copy-source" hidden>brew install ryanonmars/cryptokeeper/cryptokeeper</code>
-            <span class="p">$ </span>brew install ryanonmars/cryptokeeper/cryptokeeper
+            <code class="copy-source" hidden>brew install ryanonmars/termkey/termkey</code>
+            <span class="p">$ </span>brew install ryanonmars/termkey/termkey
           </div>
         </div>
       </div>
@@ -676,26 +676,26 @@
         <div class="install-card">
           <p class="install-intro">Choose your architecture:</p>
           <div class="dl-grid">
-            <a class="dl-btn" href="https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/cryptokeeper-macos-aarch64.zip">
+            <a class="dl-btn" href="https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-macos-aarch64.zip">
               ↓ macOS Apple Silicon <span class="arch">ARM64</span>
             </a>
-            <a class="dl-btn" href="https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/cryptokeeper-macos-x86_64.zip">
+            <a class="dl-btn" href="https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-macos-x86_64.zip">
               ↓ macOS Intel <span class="arch">x86_64</span>
             </a>
           </div>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
-            <code class="copy-source" hidden>unzip cryptokeeper-macos-*.zip
-chmod +x cryptokeeper
-sudo mv cryptokeeper /usr/local/bin/</code>
-            <span class="p">$ </span>unzip cryptokeeper-macos-*.zip<br>
-            <span class="p">$ </span>chmod +x cryptokeeper<br>
-            <span class="p">$ </span>sudo mv cryptokeeper /usr/local/bin/
+            <code class="copy-source" hidden>unzip termkey-macos-*.zip
+chmod +x termkey
+sudo mv termkey /usr/local/bin/</code>
+            <span class="p">$ </span>unzip termkey-macos-*.zip<br>
+            <span class="p">$ </span>chmod +x termkey<br>
+            <span class="p">$ </span>sudo mv termkey /usr/local/bin/
           </div>
           <div class="install-note">
             <strong>Gatekeeper:</strong> If macOS blocks the app, go to <strong>System Settings → Privacy &amp; Security</strong>,
             scroll to the bottom to the <strong>Security</strong> section — the blocked app appears there. Click <strong>Open Anyway</strong>, then confirm with <strong>Open</strong>.
-            Optionally, from the folder where the binary is, run <code>xattr -d com.apple.quarantine ./cryptokeeper</code> to remove the quarantine flag; if you see &quot;No such xattr&quot;, the file isn’t quarantined and you can skip that step.
+            Optionally, from the folder where the binary is, run <code>xattr -d com.apple.quarantine ./termkey</code> to remove the quarantine flag; if you see &quot;No such xattr&quot;, the file isn’t quarantined and you can skip that step.
           </div>
         </div>
       </div>
@@ -712,26 +712,26 @@ sudo mv cryptokeeper /usr/local/bin/</code>
           <p class="install-intro">Requires <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew for Linux</a>.</p>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
-            <code class="copy-source" hidden>brew install ryanonmars/cryptokeeper/cryptokeeper</code>
-            <span class="p">$ </span>brew install ryanonmars/cryptokeeper/cryptokeeper
+            <code class="copy-source" hidden>brew install ryanonmars/termkey/termkey</code>
+            <span class="p">$ </span>brew install ryanonmars/termkey/termkey
           </div>
         </div>
       </div>
       <div class="sub-panel" id="subpanel-linux-dl">
         <div class="install-card">
           <div class="dl-grid">
-            <a class="dl-btn" href="https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/cryptokeeper-linux-x86_64.zip">
+            <a class="dl-btn" href="https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-linux-x86_64.zip">
               ↓ Linux x86_64 <span class="arch">.zip</span>
             </a>
           </div>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
-            <code class="copy-source" hidden>unzip cryptokeeper-linux-x86_64.zip
-chmod +x cryptokeeper
-sudo mv cryptokeeper /usr/local/bin/</code>
-            <span class="p">$ </span>unzip cryptokeeper-linux-x86_64.zip<br>
-            <span class="p">$ </span>chmod +x cryptokeeper<br>
-            <span class="p">$ </span>sudo mv cryptokeeper /usr/local/bin/
+            <code class="copy-source" hidden>unzip termkey-linux-x86_64.zip
+chmod +x termkey
+sudo mv termkey /usr/local/bin/</code>
+            <span class="p">$ </span>unzip termkey-linux-x86_64.zip<br>
+            <span class="p">$ </span>chmod +x termkey<br>
+            <span class="p">$ </span>sudo mv termkey /usr/local/bin/
           </div>
         </div>
       </div>
@@ -742,12 +742,12 @@ sudo mv cryptokeeper /usr/local/bin/</code>
       <div class="install-card">
         <p class="install-intro">Download the Windows binary:</p>
         <div class="dl-grid">
-          <a class="dl-btn" href="https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/cryptokeeper-windows-x86_64.zip">
+          <a class="dl-btn" href="https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-windows-x86_64.zip">
             ↓ Windows x86_64 <span class="arch">.zip</span>
           </a>
         </div>
         <div class="install-note">
-          <strong>Setup:</strong> Extract the ZIP, place <code>cryptokeeper.exe</code> in a folder
+          <strong>Setup:</strong> Extract the ZIP, place <code>termkey.exe</code> in a folder
           (e.g. <code>C:\tools\</code>), then add it to your <strong>PATH</strong> via
           System Properties → Environment Variables → Path → Edit → New.<br><br>
           <strong>SmartScreen:</strong> Click "More info" → "Run anyway" on first launch,
@@ -770,7 +770,7 @@ sudo mv cryptokeeper /usr/local/bin/</code>
         <div class="tdot2 t2r"></div>
         <div class="tdot2 t2y"></div>
         <div class="tdot2 t2g"></div>
-        <span class="term-title">cryptokeeper — TUI</span>
+        <span class="term-title">termkey — TUI</span>
       </div>
       <div class="term-body">
 
@@ -778,9 +778,9 @@ sudo mv cryptokeeper /usr/local/bin/</code>
           <div class="step-num">1</div>
           <div>
             <div class="step-title">Launch — that's the only command</div>
-            <div class="step-desc">Run <code>cryptokeeper</code> from any terminal. First launch opens the setup wizard to create your vault and set a master password.</div>
+            <div class="step-desc">Run <code>termkey</code> from any terminal. First launch opens the setup wizard to create your vault and set a master password.</div>
             <div class="step-code">
-              <span class="p">$ </span>cryptokeeper<br>
+              <span class="p">$ </span>termkey<br>
               <span class="out">  → wizard runs on first launch</span><br>
               <span class="out">  → login screen on subsequent launches</span>
             </div>
@@ -895,7 +895,7 @@ sudo mv cryptokeeper /usr/local/bin/</code>
 
         <div class="h-label">global</div>
         <div class="h-row"><span class="h-name">?</span><span class="h-desc">Show keyboard shortcut reference</span></div>
-        <div class="h-row"><span class="h-name">Shift+Q</span><span class="h-desc">Quit CryptoKeeper</span></div>
+        <div class="h-row"><span class="h-name">Shift+Q</span><span class="h-desc">Quit TermKey</span></div>
 
       </div>
     </div>
@@ -909,12 +909,12 @@ sudo mv cryptokeeper /usr/local/bin/</code>
     <div class="footer-inner">
       <div class="footer-logo">
         <img src="Cryptokeeper-icon-white.png" alt="" class="f-icon">
-        <span class="f-name">cryptokeeper</span>
+        <span class="f-name">termkey</span>
       </div>
       <div class="footer-links">
-        <a href="https://github.com/ryanonmars/CryptoKeeper" target="_blank" rel="noopener">github</a>
-        <a href="https://github.com/ryanonmars/CryptoKeeper/releases" target="_blank" rel="noopener">releases</a>
-        <a href="https://github.com/ryanonmars/CryptoKeeper/issues" target="_blank" rel="noopener">issues</a>
+        <a href="https://github.com/ryanonmars/TermKey" target="_blank" rel="noopener">github</a>
+        <a href="https://github.com/ryanonmars/TermKey/releases" target="_blank" rel="noopener">releases</a>
+        <a href="https://github.com/ryanonmars/TermKey/issues" target="_blank" rel="noopener">issues</a>
       </div>
       <div class="footer-badges">
         <span class="badge badge-mit">MIT</span>

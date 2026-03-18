@@ -1,6 +1,6 @@
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::storage;
@@ -21,19 +21,19 @@ pub fn prompt_new_password() -> Result<Zeroizing<String>> {
     println!();
 
     let new_password = Zeroizing::new(
-        rpassword::prompt_password("New master password: ").map_err(CryptoKeeperError::Io)?,
+        rpassword::prompt_password("New master password: ").map_err(TermKeyError::Io)?,
     );
 
     if new_password.is_empty() {
-        return Err(CryptoKeeperError::EmptyPassword);
+        return Err(TermKeyError::EmptyPassword);
     }
 
     let confirm = Zeroizing::new(
-        rpassword::prompt_password("Confirm new password: ").map_err(CryptoKeeperError::Io)?,
+        rpassword::prompt_password("Confirm new password: ").map_err(TermKeyError::Io)?,
     );
 
     if *new_password != *confirm {
-        return Err(CryptoKeeperError::PasswordMismatch);
+        return Err(TermKeyError::PasswordMismatch);
     }
 
     Ok(new_password)

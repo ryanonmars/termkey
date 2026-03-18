@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 use crate::config::model::Config;
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::terminal::Tui;
 use crate::vault::model::{Entry, VaultData};
 use crate::vault::storage;
@@ -83,9 +83,9 @@ impl App {
         let view = if !config.first_run_complete && !storage::vault_exists() {
             AppView::Wizard(WizardScreen::new())
         } else if !storage::vault_exists() {
-            return Err(CryptoKeeperError::Io(std::io::Error::new(
+            return Err(TermKeyError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "No vault found. Run `cryptokeeper init` to create one.",
+                "No vault found. Run `termkey init` to create one.",
             )));
         } else {
             AppView::Login(LoginScreen::new())
@@ -795,15 +795,15 @@ impl App {
 
     fn decrypt_entry_secret(&self, entry: &Entry, view_password: &str) -> Result<Zeroizing<String>> {
         let wrapped = entry.entry_key_wrapped.as_ref()
-            .ok_or(CryptoKeeperError::SecondaryPasswordRequired)?;
+            .ok_or(TermKeyError::SecondaryPasswordRequired)?;
         let nonce = entry.entry_key_nonce.as_ref()
-            .ok_or(CryptoKeeperError::SecondaryPasswordRequired)?;
+            .ok_or(TermKeyError::SecondaryPasswordRequired)?;
         let salt = entry.entry_key_salt.as_ref()
-            .ok_or(CryptoKeeperError::SecondaryPasswordRequired)?;
+            .ok_or(TermKeyError::SecondaryPasswordRequired)?;
         let ct = entry.encrypted_secret.as_ref()
-            .ok_or(CryptoKeeperError::SecondaryPasswordRequired)?;
+            .ok_or(TermKeyError::SecondaryPasswordRequired)?;
         let ct_nonce = entry.encrypted_secret_nonce.as_ref()
-            .ok_or(CryptoKeeperError::SecondaryPasswordRequired)?;
+            .ok_or(TermKeyError::SecondaryPasswordRequired)?;
 
         let entry_key = crate::crypto::entry_key::unwrap_entry_key(wrapped, nonce, salt, view_password)?;
         crate::crypto::entry_key::decrypt_secret(&entry_key, ct, ct_nonce)

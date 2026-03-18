@@ -26,7 +26,7 @@ pub fn setup_app_theme(clear: bool) {
     if !is_interactive() {
         return;
     }
-    theme::set_title("CryptoKeeper");
+    theme::set_title("TermKey");
     if clear {
         theme::clear_screen();
     }

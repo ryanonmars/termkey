@@ -50,7 +50,7 @@ impl Dashboard {
 
         let entry_count = self.table.filtered_count();
         let status_bar = StatusBar::new(
-            "CryptoKeeper",
+            "TermKey",
             entry_count,
             self.table.filter_text(),
             self.table.number_buffer(),

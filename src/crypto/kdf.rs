@@ -1,7 +1,7 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 
 pub const DEFAULT_M_COST: u32 = 65536; // 64 MB
 pub const DEFAULT_T_COST: u32 = 3;     // 3 iterations
@@ -16,14 +16,14 @@ pub fn derive_key(
     p_cost: u32,
 ) -> Result<Zeroizing<[u8; 32]>> {
     let params = Params::new(m_cost, t_cost, p_cost, Some(32))
-        .map_err(|e| CryptoKeeperError::Encryption(format!("Argon2 params error: {e}")))?;
+        .map_err(|e| TermKeyError::Encryption(format!("Argon2 params error: {e}")))?;
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
     let mut key = Zeroizing::new([0u8; 32]);
     argon2
         .hash_password_into(password, salt, key.as_mut())
-        .map_err(|e| CryptoKeeperError::Encryption(format!("Argon2 derivation error: {e}")))?;
+        .map_err(|e| TermKeyError::Encryption(format!("Argon2 derivation error: {e}")))?;
 
     Ok(key)
 }

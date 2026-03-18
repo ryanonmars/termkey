@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 
 /// Argon2 params for per-entry key wrapping (lighter than vault KDF).
 fn entry_key_params() -> (u32, u32, u32) {
@@ -38,9 +38,9 @@ pub fn decrypt_secret(
     let n = nonce.len().min(24);
     nonce_arr[..n].copy_from_slice(&nonce[..n]);
     let plaintext = cipher::decrypt(entry_key, &nonce_arr, ciphertext)
-        .map_err(|_| CryptoKeeperError::SecondaryPasswordWrong)?;
+        .map_err(|_| TermKeyError::SecondaryPasswordWrong)?;
     let s = String::from_utf8(plaintext.to_vec())
-        .map_err(|_| CryptoKeeperError::Encryption("Invalid UTF-8 in decrypted secret".into()))?;
+        .map_err(|_| TermKeyError::Encryption("Invalid UTF-8 in decrypted secret".into()))?;
     Ok(Zeroizing::new(s))
 }
 
@@ -74,9 +74,9 @@ pub fn unwrap_entry_key(
     let n = nonce.len().min(24);
     nonce_arr[..n].copy_from_slice(&nonce[..n]);
     let plaintext = cipher::decrypt(&*wrapping_key, &nonce_arr, wrapped)
-        .map_err(|_| CryptoKeeperError::SecondaryPasswordWrong)?;
+        .map_err(|_| TermKeyError::SecondaryPasswordWrong)?;
     if plaintext.len() != 32 {
-        return Err(CryptoKeeperError::SecondaryPasswordWrong);
+        return Err(TermKeyError::SecondaryPasswordWrong);
     }
     let mut key = Zeroizing::new([0u8; 32]);
     key.copy_from_slice(&plaintext);

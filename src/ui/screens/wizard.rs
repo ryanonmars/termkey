@@ -356,13 +356,13 @@ impl WizardScreen {
         let text = vec![
             Line::from(""),
             Line::from(Span::styled(
-                "Welcome to CryptoKeeper!",
+                "Welcome to TermKey!",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("CryptoKeeper is an encrypted vault for your"),
+            Line::from("TermKey is an encrypted vault for your"),
             Line::from("cryptocurrency private keys and seed phrases."),
             Line::from(""),
             Line::from("This wizard will help you:"),
@@ -382,7 +382,7 @@ impl WizardScreen {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" CryptoKeeper Setup ")
+            .title(" TermKey Setup ")
             .title_style(
                 Style::default()
                     .fg(Color::Cyan)

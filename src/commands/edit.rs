@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::model::{SecretType, VaultData};
@@ -21,7 +21,7 @@ pub fn run(name: &str) -> Result<()> {
 pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     let entry = vault
         .find_entry_mut_by_id(name)
-        .ok_or_else(|| CryptoKeeperError::EntryNotFound(name.to_string()))?;
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     println!();
     println!("  {}", heading("Edit entry (press Enter to keep current value)"));
@@ -32,13 +32,13 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .with_prompt(format!("Name [{}]", entry.name))
         .default(entry.name.clone())
         .interact_text()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     let new_name = new_name.trim().to_string();
 
     // Check for duplicate if name changed
     if new_name.to_lowercase() != entry.name.to_lowercase() && vault.has_entry(&new_name) {
-        return Err(CryptoKeeperError::EntryAlreadyExists(new_name));
+        return Err(TermKeyError::EntryAlreadyExists(new_name));
     }
 
     // Re-fetch the entry after borrow checker satisfaction
@@ -56,10 +56,10 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .items(type_options)
         .default(current_type_idx)
         .interact()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     if type_idx == 3 {
-        return Err(CryptoKeeperError::Cancelled);
+        return Err(TermKeyError::Cancelled);
     }
 
     let new_type = match type_idx {
@@ -80,19 +80,19 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .with_prompt("Change secret?")
         .default(false)
         .interact()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     let new_secret = if change_secret {
         let secret = Zeroizing::new(
             rpassword::prompt_password("New secret (hidden): ")
-                .map_err(CryptoKeeperError::Io)?,
+                .map_err(TermKeyError::Io)?,
         );
         let confirm = Zeroizing::new(
             rpassword::prompt_password("Confirm secret (hidden): ")
-                .map_err(CryptoKeeperError::Io)?,
+                .map_err(TermKeyError::Io)?,
         );
         if *secret != *confirm {
-            return Err(CryptoKeeperError::PasswordMismatch);
+            return Err(TermKeyError::PasswordMismatch);
         }
         Some(secret)
     } else {
@@ -117,14 +117,14 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             .with_prompt(format!("Username [{}]", if current_uname.is_empty() { "(none)" } else { &current_uname }))
             .default(current_uname)
             .interact_text()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         let uname = uname.trim().to_string();
 
         let url_val: String = Input::new()
             .with_prompt(format!("URL [{}]", if current_url.is_empty() { "(none)" } else { &current_url }))
             .default(current_url)
             .interact_text()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         let url_val = url_val.trim().to_string();
 
         (
@@ -145,7 +145,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             .with_prompt(format!("Network [{}]", if default_network.is_empty() { "(none)" } else { &default_network }))
             .default(default_network)
             .interact_text()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         let new_public_address = if new_type == SecretType::PrivateKey {
             let current = if old_type == SecretType::Password {
@@ -162,7 +162,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
                 .with_prompt(format!("Public address [{}]", if current.is_empty() { "(none)" } else { current }))
                 .default(default_addr)
                 .interact_text()
-                .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
             let trimmed = addr.trim().to_string();
             if trimmed.is_empty() {
                 None
@@ -188,7 +188,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         ))
         .default(entry.notes.clone())
         .interact_text()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     // Apply changes
     entry.name = new_name.clone();

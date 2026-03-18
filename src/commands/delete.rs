@@ -1,7 +1,7 @@
 use colored::Colorize;
 use dialoguer::Confirm;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::vault::model::VaultData;
 use crate::vault::storage;
@@ -18,7 +18,7 @@ pub fn run(name: &str) -> Result<()> {
 pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     let resolved_name = vault
         .resolve_entry_name(name)
-        .ok_or_else(|| CryptoKeeperError::EntryNotFound(name.to_string()))?;
+        .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     let confirm = Confirm::new()
         .with_prompt(format!(
@@ -27,10 +27,10 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         ))
         .default(false)
         .interact()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     if !confirm {
-        return Err(CryptoKeeperError::Cancelled);
+        return Err(TermKeyError::Cancelled);
     }
 
     vault.remove_entry_by_id(name);

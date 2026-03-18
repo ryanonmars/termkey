@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoKeeperError, Result};
+use crate::error::{TermKeyError, Result};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::model::{Entry, SecretType, VaultData};
@@ -27,15 +27,15 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     let name: String = Input::new()
         .with_prompt("Entry name (e.g. \"MetaMask Main\")")
         .interact_text()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err(CryptoKeeperError::Cancelled);
+        return Err(TermKeyError::Cancelled);
     }
 
     if vault.has_entry(&name) {
-        return Err(CryptoKeeperError::EntryAlreadyExists(name));
+        return Err(TermKeyError::EntryAlreadyExists(name));
     }
 
     // Secret type
@@ -45,10 +45,10 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         .items(type_options)
         .default(0)
         .interact()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     if type_idx == 3 {
-        return Err(CryptoKeeperError::Cancelled);
+        return Err(TermKeyError::Cancelled);
     }
 
     let secret_type = match type_idx {
@@ -64,11 +64,11 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     };
     let secret = Zeroizing::new(
         rpassword::prompt_password(format!("{} (hidden): ", secret_label))
-            .map_err(CryptoKeeperError::Io)?,
+            .map_err(TermKeyError::Io)?,
     );
 
     if secret.is_empty() {
-        return Err(CryptoKeeperError::Cancelled);
+        return Err(TermKeyError::Cancelled);
     }
 
     let confirm_label = match secret_type {
@@ -77,11 +77,11 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     };
     let confirm = Zeroizing::new(
         rpassword::prompt_password(format!("{} (hidden): ", confirm_label))
-            .map_err(CryptoKeeperError::Io)?,
+            .map_err(TermKeyError::Io)?,
     );
 
     if *secret != *confirm {
-        return Err(CryptoKeeperError::PasswordMismatch);
+        return Err(TermKeyError::PasswordMismatch);
     }
 
     // Network & address (skip for Password type)
@@ -91,14 +91,14 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
             .with_prompt("Username (optional, press Enter to skip)")
             .default(String::new())
             .interact_text()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         let uname = uname.trim().to_string();
 
         let url_input: String = Input::new()
             .with_prompt("URL (optional, press Enter to skip)")
             .default(String::new())
             .interact_text()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         let url_input = url_input.trim().to_string();
 
         (
@@ -115,17 +115,17 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
             .items(network_options)
             .default(0)
             .interact()
-            .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         if net_idx == 4 {
-            return Err(CryptoKeeperError::Cancelled);
+            return Err(TermKeyError::Cancelled);
         }
 
         let network = if net_idx == 3 {
             let custom: String = Input::new()
                 .with_prompt("Enter network name")
                 .interact_text()
-                .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
             custom.trim().to_string()
         } else {
             network_options[net_idx].to_string()
@@ -137,7 +137,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
                     .with_prompt("Public address (optional, press Enter to skip)")
                     .default(String::new())
                     .interact_text()
-                    .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                    .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
                 let trimmed = addr.trim().to_string();
                 if trimmed.is_empty() {
                     None
@@ -156,7 +156,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         .with_prompt("Notes (optional, press Enter to skip)")
         .default(String::new())
         .interact_text()
-        .map_err(|e| CryptoKeeperError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     let now = Utc::now();
     let entry = Entry {
