@@ -45,22 +45,40 @@ begin
   Result := CompareText(NormalizePath(A), NormalizePath(B)) = 0;
 end;
 
+function NextPathEntry(var Remaining: String): String;
+var
+  SeparatorPos: Integer;
+begin
+  SeparatorPos := Pos(';', Remaining);
+  if SeparatorPos = 0 then
+  begin
+    Result := Trim(Remaining);
+    Remaining := '';
+  end
+  else
+  begin
+    Result := Trim(Copy(Remaining, 1, SeparatorPos - 1));
+    Delete(Remaining, 1, SeparatorPos);
+  end;
+end;
+
 function PathContainsDir(const PathValue, Dir: String): Boolean;
 var
-  Entries: TArrayOfString;
-  I: Integer;
+  Remaining: String;
+  Entry: String;
 begin
   Result := False;
-  if PathValue = '' then
-    Exit;
+  Remaining := PathValue;
 
-  Entries := SplitString(PathValue, ';');
-  for I := 0 to GetArrayLength(Entries) - 1 do
-    if PathEntryEquals(Entries[I], Dir) then
+  while Remaining <> '' do
+  begin
+    Entry := NextPathEntry(Remaining);
+    if (Entry <> '') and PathEntryEquals(Entry, Dir) then
     begin
       Result := True;
       Exit;
     end;
+  end;
 end;
 
 function AddDirToPath(const PathValue, Dir: String): String;
@@ -75,18 +93,15 @@ end;
 
 function RemoveDirFromPath(const PathValue, Dir: String): String;
 var
-  Entries: TArrayOfString;
-  I: Integer;
+  Remaining: String;
   Entry: String;
 begin
   Result := '';
-  if PathValue = '' then
-    Exit;
+  Remaining := PathValue;
 
-  Entries := SplitString(PathValue, ';');
-  for I := 0 to GetArrayLength(Entries) - 1 do
+  while Remaining <> '' do
   begin
-    Entry := Trim(Entries[I]);
+    Entry := NextPathEntry(Remaining);
     if (Entry <> '') and not PathEntryEquals(Entry, Dir) then
     begin
       if Result <> '' then
