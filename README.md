@@ -135,7 +135,7 @@ Notes:
 
 | | |
 |---|---|
-| **Navigation** | `↑/↓` move, `1-9` quick jump, `Enter` select, `Esc` back/clear filter, `/` search, `Shift+F` find/filter |
+| **Navigation** | `↑/↓` move, type a number then press `Enter` to jump to that entry, `Esc` back/clear filter, `/` search, `Shift+F` find/filter |
 | **Entry** | `Shift+A` add, `Shift+V` view, `Shift+C` copy, `Shift+E` edit, `Shift+D` delete |
 | **Vault** | `Shift+X` export, `Shift+I` import, `Shift+P` change password, `Shift+S` settings |
 | **Other** | `?` help, `Shift+Q` quit, `Ctrl+C` quit, `Ctrl+Q` quit, `F1` recovery from the login screen |
