@@ -1,46 +1,17 @@
 $ErrorActionPreference = "Stop"
 
-$InstallDir = "$env:LOCALAPPDATA\termkey"
-$zipUrl = "https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-windows-x86_64.zip"
-$zipPath = "$env:TEMP\termkey.zip"
+$setupUrl = "https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/TermKey-Setup.exe"
+$setupPath = "$env:TEMP\TermKey-Setup.exe"
 
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+Invoke-WebRequest $setupUrl -OutFile $setupPath
 
-Invoke-WebRequest $zipUrl -OutFile $zipPath
-Expand-Archive $zipPath -DestinationPath $InstallDir -Force
+$process = Start-Process -FilePath $setupPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
 
-$normalizedInstallDir = $InstallDir.TrimEnd("\")
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$userEntries = @()
-
-if (-not [string]::IsNullOrWhiteSpace($userPath)) {
-    $userEntries = $userPath -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+if ($process.ExitCode -ne 0) {
+    throw "TermKey installer exited with code $($process.ExitCode)."
 }
 
-$hasUserEntry = $userEntries | Where-Object { $_.TrimEnd("\") -ieq $normalizedInstallDir }
-
-if (-not $hasUserEntry) {
-    $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) {
-        $InstallDir
-    } else {
-        (($userEntries + $InstallDir) -join ";")
-    }
-
-    [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
-}
-
-$sessionEntries = $env:PATH -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-$hasSessionEntry = $sessionEntries | Where-Object { $_.TrimEnd("\") -ieq $normalizedInstallDir }
-
-if (-not $hasSessionEntry) {
-    $env:PATH = if ([string]::IsNullOrWhiteSpace($env:PATH)) {
-        $InstallDir
-    } else {
-        (($sessionEntries + $InstallDir) -join ";")
-    }
-}
-
-Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+Remove-Item $setupPath -Force -ErrorAction SilentlyContinue
 
 Write-Host "TermKey installed successfully."
 Write-Host "Restart your terminal or run: refreshenv"

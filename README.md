@@ -55,15 +55,17 @@ sudo mv termkey /usr/local/bin/
 
 ### Windows Install (Recommended)
 
-Run this in PowerShell:
+Download and run the installer: [TermKey-Setup.exe](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/TermKey-Setup.exe)
+
+No admin required. It installs to `LOCALAPPDATA\termkey`, adds `termkey` to your user `PATH`, and includes an uninstaller.
+
+PowerShell bootstrap:
 
 ```powershell
 iwr https://raw.githubusercontent.com/ryanonmars/CryptoKeeper/main/scripts/install.ps1 | iex
 ```
 
-No admin required. This installs to `LOCALAPPDATA\termkey` and adds that directory to your user `PATH`.
-
-Manual download: [Windows x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-windows-x86_64.zip)
+Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-windows-x86_64.zip)
 
 **SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the .exe → Properties → check **Unblock**.
 
