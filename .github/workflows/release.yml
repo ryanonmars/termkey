@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build artifacts and validate tap access without creating a release
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -87,6 +94,7 @@ jobs:
   release:
     name: Create Release
     needs: build
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,6 +119,7 @@ jobs:
   update-tap:
     name: Update Homebrew Tap
     needs: release
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -174,3 +183,64 @@ jobs:
           git add -A Formula
           git commit -m "termkey ${VER}"
           git push
+
+  validate-tap:
+    name: Validate Homebrew Tap
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Validate tap access and formula output
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          SHA_LINUX=$(sha256sum artifacts/termkey-linux-x86_64/termkey-linux-x86_64.zip | awk '{print $1}')
+          SHA_MACOS_X86=$(sha256sum artifacts/termkey-macos-x86_64/termkey-macos-x86_64.zip | awk '{print $1}')
+          SHA_MACOS_ARM=$(sha256sum artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip | awk '{print $1}')
+
+          git ls-remote https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/ryanonmars/homebrew-termkey.git HEAD
+
+          VER="0.0.0-dry-run"
+
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Dry Run Formula Preview
+
+          - Ref: ${REF_NAME}
+          - Linux SHA256: \`${SHA_LINUX}\`
+          - macOS Intel SHA256: \`${SHA_MACOS_X86}\`
+          - macOS ARM SHA256: \`${SHA_MACOS_ARM}\`
+
+          \`\`\`ruby
+          class Termkey < Formula
+            desc "CLI encrypted storage for private keys and seed phrases"
+            homepage "https://github.com/ryanonmars/termkey"
+            version "${VER}"
+            license "MIT"
+
+            url "https://github.com/ryanonmars/termkey/releases/download/v${VER}/termkey-linux-x86_64.zip"
+            sha256 "${SHA_LINUX}"
+
+            on_macos do
+              on_intel do
+                url "https://github.com/ryanonmars/termkey/releases/download/v${VER}/termkey-macos-x86_64.zip"
+                sha256 "${SHA_MACOS_X86}"
+              end
+
+              on_arm do
+                url "https://github.com/ryanonmars/termkey/releases/download/v${VER}/termkey-macos-aarch64.zip"
+                sha256 "${SHA_MACOS_ARM}"
+              end
+            end
+
+            def install
+              bin.install "termkey"
+            end
+          end
+          \`\`\`
+          EOF
