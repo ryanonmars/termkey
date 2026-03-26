@@ -24,7 +24,7 @@ Local-only, encrypted TUI vault for private keys and seed phrases. **XChaCha20-P
 **Homebrew** (recommended; updates with `brew upgrade`):
 
 ```bash
-brew install ryanonmars/termkey/termkey
+brew install ryanonmars/cryptokeeper/cryptokeeper
 ```
 
 **Direct download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-x86_64.zip)
@@ -42,7 +42,7 @@ sudo mv termkey /usr/local/bin/
 **Homebrew (Linuxbrew):** [brew.sh](https://brew.sh) then:
 
 ```bash
-brew install ryanonmars/termkey/termkey
+brew install ryanonmars/cryptokeeper/cryptokeeper
 ```
 
 **Direct download:** [Linux x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-linux-x86_64.zip)
