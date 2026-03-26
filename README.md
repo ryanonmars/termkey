@@ -27,7 +27,7 @@ Local-only, encrypted TUI vault for private keys and seed phrases. **XChaCha20-P
 brew install ryanonmars/termkey/termkey
 ```
 
-**Direct download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-macos-x86_64.zip)
+**Direct download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-x86_64.zip)
 
 ```bash
 unzip termkey-macos-*.zip
@@ -45,7 +45,7 @@ sudo mv termkey /usr/local/bin/
 brew install ryanonmars/termkey/termkey
 ```
 
-**Direct download:** [Linux x86_64](https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-linux-x86_64.zip)
+**Direct download:** [Linux x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-linux-x86_64.zip)
 
 ```bash
 unzip termkey-linux-x86_64.zip
@@ -53,11 +53,18 @@ chmod +x termkey
 sudo mv termkey /usr/local/bin/
 ```
 
-### Windows
+### Windows Install (Recommended)
 
-Download: [Windows x86_64](https://github.com/ryanonmars/TermKey/releases/latest/download/termkey-windows-x86_64.zip)
+Run this in PowerShell:
 
-Extract the ZIP, place `termkey.exe` in a folder (e.g. `C:\tools\`), then add it to your **PATH** (System Properties → Environment Variables → Path → Edit → New).
+```powershell
+iwr https://raw.githubusercontent.com/ryanonmars/CryptoKeeper/main/scripts/install.ps1 | iex
+```
+
+No admin required. This installs to `LOCALAPPDATA\termkey` and adds that directory to your user `PATH`.
+
+Manual download: [Windows x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-windows-x86_64.zip)
+
 **SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the .exe → Properties → check **Unblock**.
 
 ---
@@ -86,7 +93,7 @@ Extract the ZIP, place `termkey.exe` in a folder (e.g. `C:\tools\`), then add it
 
 ## Links
 
-- [Releases](https://github.com/ryanonmars/TermKey/releases)
-- [Issues](https://github.com/ryanonmars/TermKey/issues)
+- [Releases](https://github.com/ryanonmars/CryptoKeeper/releases)
+- [Issues](https://github.com/ryanonmars/CryptoKeeper/issues)
 
 **License:** MIT · **Rust**

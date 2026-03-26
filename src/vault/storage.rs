@@ -22,16 +22,8 @@ fn dirs_fallback() -> PathBuf {
     PathBuf::from(home).join(".termkey")
 }
 
-/// Migrate vault from ~/.cryptokeeper to ~/.termkey if needed (one-time, on first run).
 pub fn migrate_vault_if_needed() {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    let old_dir = std::path::PathBuf::from(&home).join(".cryptokeeper");
-    let new_dir = std::path::PathBuf::from(&home).join(".termkey");
-    if !new_dir.exists() && old_dir.exists() {
-        let _ = fs::rename(&old_dir, &new_dir);
-    }
+    // No-op: legacy vault path migration has been removed.
 }
 
 pub fn vault_path() -> PathBuf {

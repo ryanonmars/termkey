@@ -75,7 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/*/termkey-*.zip
+            artifacts/*/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,21 +110,21 @@ jobs:
 
           class Termkey < Formula
             desc "CLI encrypted storage for private keys and seed phrases"
-            homepage "https://github.com/ryanonmars/TermKey"
+            homepage "https://github.com/ryanonmars/CryptoKeeper"
             version "${VER}"
             license "MIT"
 
-            url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-linux-x86_64.zip"
+            url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/termkey-linux-x86_64.zip"
             sha256 "${SHA_LINUX}"
 
             on_macos do
               on_intel do
-                url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-macos-x86_64.zip"
+                url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/termkey-macos-x86_64.zip"
                 sha256 "${SHA_MACOS_X86}"
               end
 
               on_arm do
-                url "https://github.com/ryanonmars/TermKey/releases/download/${VERSION}/termkey-macos-aarch64.zip"
+                url "https://github.com/ryanonmars/CryptoKeeper/releases/download/${VERSION}/termkey-macos-aarch64.zip"
                 sha256 "${SHA_MACOS_ARM}"
               end
             end
@@ -144,32 +144,3 @@ jobs:
           git add Formula/termkey.rb
           git commit -m "termkey ${VER}"
           git push
-
-  update-winget:
-    name: Update Winget Manifest
-    needs: release
-    runs-on: windows-latest
-    steps:
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: termkey-windows-x86_64
-          path: artifacts
-
-      - name: Download wingetcreate
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
-
-      - name: Run wingetcreate update
-        shell: pwsh
-        env:
-          WINGET_PAT: ${{ secrets.WINGET_PAT }}
-        run: |
-          $version = $env:GITHUB_REF_NAME -replace '^v', ''
-          $url = "https://github.com/ryanonmars/TermKey/releases/download/$env:GITHUB_REF_NAME/termkey-windows-x86_64.zip"
-          .\wingetcreate.exe update RyanOnMars.TermKey `
-            --version $version `
-            --urls $url `
-            --token $env:WINGET_PAT `
-            --submit
