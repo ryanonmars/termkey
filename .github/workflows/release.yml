@@ -67,13 +67,27 @@ jobs:
           Compress-Archive -Path (Join-Path $releaseDir "termkey.exe") -DestinationPath $zipPath
           & $iscc "/DAppVersion=$version" "/DSourceDir=$releaseDir" "/DOutputDir=$env:GITHUB_WORKSPACE" $installerScript
 
-      - name: Prepare asset (Unix)
-        if: matrix.os != 'windows-latest'
+      - name: Prepare asset (Linux)
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
           zip ${{ matrix.asset_name }}.zip termkey
           mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
+
+      - name: Prepare asset (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          zip ${{ matrix.asset_name }}.zip termkey
+          mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
+
+          "${{ github.workspace }}/packaging/macos/create-dmg.sh" \
+            "${{ github.workspace }}/target/${{ matrix.target }}/release/termkey" \
+            "${{ matrix.asset_name }}" \
+            "TermKey ${{ matrix.target }}" \
+            "${{ github.workspace }}"
 
       - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest'
@@ -85,11 +99,20 @@ jobs:
             TermKey-Setup.exe
 
       - name: Upload artifact (Unix)
-        if: matrix.os != 'windows-latest'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.zip
+
+      - name: Upload artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            ${{ matrix.asset_name }}.zip
+            ${{ matrix.asset_name }}.dmg
 
   release:
     name: Create Release
@@ -112,6 +135,7 @@ jobs:
           files: |
             artifacts/*/*.zip
             artifacts/*/*.exe
+            artifacts/*/*.dmg
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
