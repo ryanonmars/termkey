@@ -24,10 +24,10 @@ Local-only, encrypted TUI vault for private keys and seed phrases. **XChaCha20-P
 **Homebrew** (recommended; updates with `brew upgrade`):
 
 ```bash
-brew install ryanonmars/cryptokeeper/cryptokeeper
+brew install ryanonmars/termkey/termkey
 ```
 
-**Direct download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-macos-x86_64.zip)
+**Direct download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x86_64.zip)
 
 ```bash
 unzip termkey-macos-*.zip
@@ -42,10 +42,10 @@ sudo mv termkey /usr/local/bin/
 **Homebrew (Linuxbrew):** [brew.sh](https://brew.sh) then:
 
 ```bash
-brew install ryanonmars/cryptokeeper/cryptokeeper
+brew install ryanonmars/termkey/termkey
 ```
 
-**Direct download:** [Linux x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-linux-x86_64.zip)
+**Direct download:** [Linux x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-linux-x86_64.zip)
 
 ```bash
 unzip termkey-linux-x86_64.zip
@@ -55,17 +55,17 @@ sudo mv termkey /usr/local/bin/
 
 ### Windows Install (Recommended)
 
-Download and run the installer: [TermKey-Setup.exe](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/TermKey-Setup.exe)
+Download and run the installer: [TermKey-Setup.exe](https://github.com/ryanonmars/termkey/releases/latest/download/TermKey-Setup.exe)
 
 No admin required. It installs to `LOCALAPPDATA\termkey`, adds `termkey` to your user `PATH`, and includes an uninstaller.
 
 PowerShell bootstrap:
 
 ```powershell
-iwr https://raw.githubusercontent.com/ryanonmars/CryptoKeeper/main/scripts/install.ps1 | iex
+iwr https://raw.githubusercontent.com/ryanonmars/termkey/main/scripts/install.ps1 | iex
 ```
 
-Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/termkey-windows-x86_64.zip)
+Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)
 
 **SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the .exe → Properties → check **Unblock**.
 
@@ -95,7 +95,7 @@ Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/CryptoKeeper/releases
 
 ## Links
 
-- [Releases](https://github.com/ryanonmars/CryptoKeeper/releases)
-- [Issues](https://github.com/ryanonmars/CryptoKeeper/issues)
+- [Releases](https://github.com/ryanonmars/termkey/releases)
+- [Issues](https://github.com/ryanonmars/termkey/issues)
 
 **License:** MIT · **Rust**

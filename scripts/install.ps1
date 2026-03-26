@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$setupUrl = "https://github.com/ryanonmars/CryptoKeeper/releases/latest/download/TermKey-Setup.exe"
+$setupUrl = "https://github.com/ryanonmars/termkey/releases/latest/download/TermKey-Setup.exe"
 $setupPath = "$env:TEMP\TermKey-Setup.exe"
 
 Invoke-WebRequest $setupUrl -OutFile $setupPath
