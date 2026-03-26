@@ -3,38 +3,25 @@ TermKey for macOS
 
 This disk image contains:
 
-- termkey: the CLI binary
-- install.command: guided installer for common PATH locations
+- Install TermKey.pkg: installer package for the TermKey CLI
 
 Recommended install
 -------------------
 
-1. Right-click install.command and choose Open.
-2. Confirm the macOS security prompts if they appear.
-3. The installer will copy termkey into:
-   - /opt/homebrew/bin on Apple Silicon when available
-   - /usr/local/bin on Intel when available
-   - ~/.local/bin as a fallback
+1. Open Install TermKey.pkg.
+2. Follow the macOS installer steps.
+3. The installer places termkey at /usr/local/bin/termkey.
+4. Open a new Terminal window and run termkey.
 
 Manual install
 --------------
 
-You can also copy termkey into any directory on your PATH and make sure it is executable.
+You can also skip the installer and use the ZIP asset if you prefer a manual install.
 
-Examples:
-
-  chmod +x termkey
-  sudo cp termkey /usr/local/bin/termkey
-
-or on Apple Silicon systems using Homebrew:
-
-  chmod +x termkey
-  sudo cp termkey /opt/homebrew/bin/termkey
+The ZIP release is still available for users who want to place the binary manually.
 
 Gatekeeper
 ----------
 
-TermKey is currently distributed as an unsigned binary. If macOS blocks it, use Open Anyway
-in System Settings > Privacy & Security, or remove the quarantine flag manually:
-
-  xattr -d com.apple.quarantine /path/to/termkey
+TermKey is currently distributed as an unsigned installer. If macOS blocks it, use Open Anyway
+in System Settings > Privacy & Security.

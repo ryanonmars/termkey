@@ -3,17 +3,17 @@
 set -euo pipefail
 
 if [[ $# -ne 4 ]]; then
-  echo "usage: $0 <binary-path> <asset-name> <volume-name> <output-dir>" >&2
+  echo "usage: $0 <package-path> <asset-name> <volume-name> <output-dir>" >&2
   exit 1
 fi
 
-binary_path=$1
+package_path=$1
 asset_name=$2
 volume_name=$3
 output_dir=$4
 
-if [[ ! -f "$binary_path" ]]; then
-  echo "binary not found: $binary_path" >&2
+if [[ ! -f "$package_path" ]]; then
+  echo "package not found: $package_path" >&2
   exit 1
 fi
 
@@ -23,12 +23,12 @@ trap 'rm -rf "$staging_dir"' EXIT
 
 mkdir -p "$output_dir"
 
-cp "$binary_path" "$staging_dir/termkey"
-cp "$script_dir/install.command" "$staging_dir/install.command"
+cp "$package_path" "$staging_dir/Install TermKey.pkg"
 cp "$script_dir/README.txt" "$staging_dir/README.txt"
 
-chmod 755 "$staging_dir/termkey" "$staging_dir/install.command"
+chmod 644 "$staging_dir/Install TermKey.pkg"
 chmod 644 "$staging_dir/README.txt"
+xattr -cr "$staging_dir" 2>/dev/null || true
 
 hdiutil create \
   -volname "$volume_name" \

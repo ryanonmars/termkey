@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+binary_path="/usr/local/bin/termkey"
+
+if [[ -f "$binary_path" ]]; then
+  chmod 755 "$binary_path"
+  xattr -d com.apple.quarantine "$binary_path" 2>/dev/null || true
+fi
+
+exit 0

@@ -78,13 +78,24 @@ jobs:
       - name: Prepare asset (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           cd target/${{ matrix.target }}/release
           zip ${{ matrix.asset_name }}.zip termkey
           mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
 
-          "${{ github.workspace }}/packaging/macos/create-dmg.sh" \
+          VERSION_NO_V="${VERSION#v}"
+          PACKAGE_NAME="${{ matrix.asset_name }}-installer"
+
+          "${{ github.workspace }}/packaging/macos/create-pkg.sh" \
             "${{ github.workspace }}/target/${{ matrix.target }}/release/termkey" \
+            "${VERSION_NO_V}" \
+            "${PACKAGE_NAME}" \
+            "${{ github.workspace }}"
+
+          "${{ github.workspace }}/packaging/macos/create-dmg.sh" \
+            "${{ github.workspace }}/${PACKAGE_NAME}.pkg" \
             "${{ matrix.asset_name }}" \
             "TermKey ${{ matrix.target }}" \
             "${{ github.workspace }}"
@@ -112,6 +123,7 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: |
             ${{ matrix.asset_name }}.zip
+            ${{ matrix.asset_name }}-installer.pkg
             ${{ matrix.asset_name }}.dmg
 
   release:
@@ -135,6 +147,7 @@ jobs:
           files: |
             artifacts/*/*.zip
             artifacts/*/*.exe
+            artifacts/*/*.pkg
             artifacts/*/*.dmg
           generate_release_notes: true
         env:
