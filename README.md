@@ -1,9 +1,11 @@
 # TermKey
 
-Local-only, encrypted TUI vault for private keys and seed phrases. **XChaCha20-Poly1305** + **Argon2id**. Zero cloud. Zero trust.
+Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `termkey` for the full-screen TUI, or use subcommands for direct terminal workflows. **XChaCha20-Poly1305** + **Argon2id**. Zero cloud. Zero trust.
 
-- **Vault:** `~/.termkey/` — local storage only, no network, no cloud sync
-- **TUI:** Run `termkey`, use keyboard shortcuts (Shift+letter for actions)
+- **Vault path:** `~/.termkey/`
+- **Secret types:** private keys, seed phrases, passwords
+- **Networks:** Ethereum, Bitcoin, Solana, or a custom network label
+- **Extras:** encrypted backup/import, optional recovery question, address derivation for supported crypto entries
 
 ---
 
@@ -11,9 +13,9 @@ Local-only, encrypted TUI vault for private keys and seed phrases. **XChaCha20-P
 
 | | |
 |---|---|
-| **XChaCha20-Poly1305** | AEAD cipher, 192-bit nonce — authenticated, tamper-evident |
-| **Argon2id** | Memory-hard KDF — resistant to GPU & ASIC attacks |
-| **~/.termkey/** | Local-only storage — no network access |
+| **XChaCha20-Poly1305** | AEAD cipher with a 192-bit nonce for authenticated encryption |
+| **Argon2id** | Memory-hard KDF for deriving encryption keys from your master password |
+| **Local-only storage** | Vault data lives under `~/.termkey/` with no cloud sync or remote service |
 
 ---
 
@@ -35,11 +37,11 @@ chmod +x termkey
 sudo mv termkey /usr/local/bin/
 ```
 
-**Gatekeeper:** If macOS blocks the app, go to **System Settings → Privacy & Security**, scroll to the **Security** section — the blocked app appears there. Click **Open Anyway**, then confirm with **Open**. Optionally, from the folder where the binary is: `xattr -d com.apple.quarantine ./termkey` (if you see "No such xattr", skip that step).
+**Gatekeeper:** If macOS blocks the app, go to **System Settings → Privacy & Security**, scroll to the **Security** section, click **Open Anyway**, then confirm with **Open**. If needed, remove the quarantine flag from the extracted binary with `xattr -d com.apple.quarantine ./termkey`.
 
 ### Linux
 
-**Homebrew (Linuxbrew):** [brew.sh](https://brew.sh) then:
+**Homebrew on Linux:** [brew.sh](https://brew.sh) then:
 
 ```bash
 brew install ryanonmars/termkey/termkey
@@ -53,11 +55,11 @@ chmod +x termkey
 sudo mv termkey /usr/local/bin/
 ```
 
-### Windows Install (Recommended)
+### Windows
 
 Download and run the installer: [TermKey-Setup.exe](https://github.com/ryanonmars/termkey/releases/latest/download/TermKey-Setup.exe)
 
-No admin required. It installs to `LOCALAPPDATA\termkey`, adds `termkey` to your user `PATH`, and includes an uninstaller.
+No admin required. It installs to `%LOCALAPPDATA%\termkey`, adds `termkey` to your user `PATH`, and includes an uninstaller.
 
 PowerShell bootstrap:
 
@@ -67,29 +69,76 @@ iwr https://raw.githubusercontent.com/ryanonmars/termkey/main/scripts/install.ps
 
 Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)
 
-**SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the .exe → Properties → check **Unblock**.
+**SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the `.exe`, open **Properties**, and check **Unblock**.
 
 ---
 
-## Usage
+## How It Works
 
-1. **Launch:** Run `termkey`. First launch runs the setup wizard (create vault + master password); after that you get the login screen.
-2. **Dashboard:** Entry list is the home screen. **↑/↓** navigate, **/** search/filter, **Enter** view selected entry.
-3. **Add:** **Shift+A** — fill the form; the secret field is hidden and never touches shell history.
-4. **View / copy:** **Shift+V** reveal in TUI, **Shift+C** copy to clipboard (auto-clears after 10s).
-5. **Edit / delete:** **Shift+E** edit, **Shift+D** delete (confirmation required). **Shift+X** export vault, **Shift+I** import backup.
-6. **Help:** **?** shows the full shortcut list. **Shift+Q** quit. **Ctrl+C** or **Ctrl+Q** quit from anywhere.
+Run `termkey` with no subcommand to open the TUI.
+
+On first launch, TermKey opens a setup wizard where you:
+
+1. Create your master password
+2. Create the local vault
+3. Optionally set up a recovery question
+
+After setup, you land on the login screen and then the dashboard.
+
+Inside the TUI you can:
+
+- Add private keys, seed phrases, or passwords
+- Search and filter entries in place
+- View secrets or copy them to the clipboard
+- Edit, rename, and delete entries
+- Export an encrypted backup and import it later
+- Change your master password
+- Open settings and recovery flows
+
+For crypto entries, TermKey supports Ethereum, Bitcoin, Solana, and custom network labels. Public address derivation is available for supported Ethereum, Bitcoin, and Solana private keys and seed phrases.
+
+For password entries, you can also store optional username and URL metadata alongside the secret.
 
 ---
 
-## Keyboard shortcuts
+## CLI Commands
+
+The TUI is the default interface, but the command mode is fully available when you want direct operations:
+
+```bash
+termkey init
+termkey add
+termkey list
+termkey view <name-or-index>
+termkey edit <name-or-index>
+termkey rename <old> <new>
+termkey delete <name-or-index>
+termkey copy <name-or-index>
+termkey search <query>
+termkey export <directory>
+termkey import <path/to/backup.ck>
+termkey passwd
+termkey recover
+termkey config --show
+termkey derive <name-or-index>
+```
+
+Notes:
+
+- `termkey export <directory>` writes an encrypted `backup.ck` file into that directory.
+- `termkey recover` uses your configured recovery question flow.
+- `termkey derive` saves a public address for supported Ethereum, Bitcoin, and Solana key or seed entries.
+
+---
+
+## Keyboard Shortcuts
 
 | | |
-|---|--|
-| **Navigation** | ↑/↓ move, Enter select, Esc back/clear filter, / search, **Shift+F** find/filter |
-| **Entry** | **Shift+A** add, **Shift+V** view, **Shift+C** copy, **Shift+E** edit, **Shift+D** delete |
-| **Vault** | **Shift+X** export, **Shift+I** import, **Shift+P** change password, **Shift+S** settings |
-| **Other** | **?** help, **Shift+Q** quit, **F1** recovery (login screen) |
+|---|---|
+| **Navigation** | `↑/↓` move, `1-9` quick jump, `Enter` select, `Esc` back/clear filter, `/` search, `Shift+F` find/filter |
+| **Entry** | `Shift+A` add, `Shift+V` view, `Shift+C` copy, `Shift+E` edit, `Shift+D` delete |
+| **Vault** | `Shift+X` export, `Shift+I` import, `Shift+P` change password, `Shift+S` settings |
+| **Other** | `?` help, `Shift+Q` quit, `Ctrl+C` quit, `Ctrl+Q` quit, `F1` recovery from the login screen |
 
 ---
 
