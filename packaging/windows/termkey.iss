@@ -1,5 +1,7 @@
 #define MyAppName "TermKey"
 #define MyAppExeName "termkey.exe"
+#define IconFileName "termkey.ico"
+#define ScriptDir AddBackslash(SourcePath)
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -28,11 +30,13 @@ Compression=lzma
 SolidCompression=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=TermKey-Setup
-UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile={#ScriptDir + IconFileName}
+UninstallDisplayIcon={app}\{#IconFileName}
 WizardStyle=modern
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#ScriptDir + IconFileName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Code]
 function NormalizePath(const Value: String): String;

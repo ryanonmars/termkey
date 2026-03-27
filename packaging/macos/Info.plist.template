@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>TermKey</string>
+  <key>CFBundleExecutable</key>
+  <string>TermKey</string>
+  <key>CFBundleIconFile</key>
+  <string>termkey</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.ryanonmars.termkey.app</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>TermKey</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>TermKey needs to control Terminal to launch the bundled CLI app.</string>
+  <key>CFBundleShortVersionString</key>
+  <string>__VERSION__</string>
+  <key>CFBundleVersion</key>
+  <string>__VERSION__</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>

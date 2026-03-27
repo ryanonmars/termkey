@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/termkey-icon.svg" alt="TermKey" width="420">
+</p>
+
 # TermKey
 
 Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `termkey` for the full-screen TUI, or use subcommands for direct terminal workflows. **XChaCha20-Poly1305** + **Argon2id**. Zero cloud. Zero trust.
@@ -34,6 +38,8 @@ brew install ryanonmars/termkey/termkey
 **Direct PKG installer:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64-installer.pkg) · [Intel (x86_64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x86_64-installer.pkg)
 
 **Direct ZIP download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x86_64.zip)
+
+The macOS installer adds `TermKey.app` to `/Applications` and also installs the `termkey` CLI to `/usr/local/bin`.
 
 ```bash
 unzip termkey-macos-*.zip
