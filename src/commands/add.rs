@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::model::{Entry, SecretType, VaultData};
@@ -39,7 +39,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     }
 
     // Secret type
-    let type_options = &["Private Key", "Seed Phrase", "Password", "Exit"];
+    let type_options = &["Private Key", "Seed Phrase", "Password", "Other", "Exit"];
     let type_idx = Select::new()
         .with_prompt("Secret type")
         .items(type_options)
@@ -47,19 +47,31 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         .interact()
         .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
-    if type_idx == 3 {
+    if type_idx == 4 {
         return Err(TermKeyError::Cancelled);
     }
 
     let secret_type = match type_idx {
         0 => SecretType::PrivateKey,
         1 => SecretType::SeedPhrase,
-        _ => SecretType::Password,
+        2 => SecretType::Password,
+        _ => {
+            let custom_type: String = Input::new()
+                .with_prompt("Custom secret type")
+                .interact_text()
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            let custom_type = custom_type.trim().to_string();
+            if custom_type.is_empty() {
+                return Err(TermKeyError::Cancelled);
+            }
+            SecretType::Other(custom_type)
+        }
     };
 
     // Secret (hidden input)
     let secret_label = match secret_type {
         SecretType::Password => "Password",
+        SecretType::Other(_) => "Secret",
         _ => "Paste your secret",
     };
     let secret = Zeroizing::new(
@@ -73,6 +85,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
 
     let confirm_label = match secret_type {
         SecretType::Password => "Confirm password",
+        SecretType::Other(_) => "Confirm secret",
         _ => "Confirm secret",
     };
     let confirm = Zeroizing::new(
@@ -85,7 +98,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     }
 
     // Network & address (skip for Password type)
-    let (network, public_address, username, url) = if secret_type == SecretType::Password {
+    let (network, public_address, username, url) = if secret_type.is_password_type() {
         // Password: prompt for optional username and URL
         let uname: String = Input::new()
             .with_prompt("Username (optional, press Enter to skip)")
@@ -105,9 +118,13 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
             String::new(),
             None,
             if uname.is_empty() { None } else { Some(uname) },
-            if url_input.is_empty() { None } else { Some(url_input) },
+            if url_input.is_empty() {
+                None
+            } else {
+                Some(url_input)
+            },
         )
-    } else {
+    } else if secret_type.is_crypto_type() {
         // PrivateKey / SeedPhrase: network + optional address
         let network_options = &["Ethereum", "Bitcoin", "Solana", "Other", "Exit"];
         let net_idx = Select::new()
@@ -137,7 +154,9 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
                     .with_prompt("Public address (optional, press Enter to skip)")
                     .default(String::new())
                     .interact_text()
-                    .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                    .map_err(|e| {
+                        TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?;
                 let trimmed = addr.trim().to_string();
                 if trimmed.is_empty() {
                     None
@@ -149,6 +168,8 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         };
 
         (network, public_address, None, None)
+    } else {
+        (String::new(), None, None, None)
     };
 
     // Notes (optional)
@@ -180,10 +201,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
 
     vault.entries.push(entry);
 
-    print_success(&format!(
-        "Entry '{}' stored successfully.",
-        name.cyan()
-    ));
+    print_success(&format!("Entry '{}' stored successfully.", name.cyan()));
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::config;
 use crate::config::model::RECOVERY_QUESTIONS;
 use crate::crypto::{kdf, recovery};
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::{print_error, print_success};
 use crate::ui::theme::heading;
 use crate::vault::storage;
@@ -36,9 +36,8 @@ pub fn run() -> Result<()> {
             ));
         }
 
-        let answer = Zeroizing::new(
-            rpassword::prompt_password("Your answer: ").map_err(TermKeyError::Io)?,
-        );
+        let answer =
+            Zeroizing::new(rpassword::prompt_password("Your answer: ").map_err(TermKeyError::Io)?);
 
         let normalized = recovery::normalize_answer(&answer);
         if !recovery::verify_answer(&normalized, &recovery.answer_salt, &recovery.answer_hash)? {
@@ -93,8 +92,7 @@ pub fn run() -> Result<()> {
             &recovery_cfg.answer_hash,
         )? {
             return Err(TermKeyError::RecoveryFailed(
-                "Recovery answer does not match stored answer. Recovery config not updated."
-                    .into(),
+                "Recovery answer does not match stored answer. Recovery config not updated.".into(),
             ));
         }
 

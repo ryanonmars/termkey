@@ -17,9 +17,12 @@ pub struct AddEntryScreen {
     current_field: usize,
     name: String,
     secret_type: SecretType,
+    custom_secret_type: String,
     secret: String,
     secret_confirm: String,
     network: String,
+    custom_network: String,
+    use_custom_network: bool,
     username: String,
     url: String,
     notes: String,
@@ -48,9 +51,12 @@ impl AddEntryScreen {
             current_field: 0,
             name: String::new(),
             secret_type: SecretType::PrivateKey,
+            custom_secret_type: String::new(),
             secret: String::new(),
             secret_confirm: String::new(),
             network: "Ethereum".to_string(),
+            custom_network: String::new(),
+            use_custom_network: false,
             username: String::new(),
             url: String::new(),
             notes: String::new(),
@@ -110,8 +116,8 @@ impl AddEntryScreen {
                 if self.current_field == 1 {
                     self.show_type_select = true;
                 }
-                // Network selector (crypto only, field index 4)
-                else if self.is_crypto_type() && self.current_field == 4 {
+                // Network selector (crypto only)
+                else if self.is_crypto_type() && self.current_field == self.network_field() {
                     self.show_network_select = true;
                 }
                 // Secondary password toggle
@@ -152,7 +158,7 @@ impl AddEntryScreen {
                 }
             }
             KeyCode::Down => {
-                if self.type_selected < 2 {
+                if self.type_selected < 3 {
                     self.type_selected += 1;
                 }
             }
@@ -160,8 +166,15 @@ impl AddEntryScreen {
                 self.secret_type = match self.type_selected {
                     0 => SecretType::PrivateKey,
                     1 => SecretType::SeedPhrase,
-                    _ => SecretType::Password,
+                    2 => SecretType::Password,
+                    _ => SecretType::Other(self.custom_secret_type.trim().to_string()),
                 };
+                if self.is_crypto_type() && self.network.is_empty() && !self.use_custom_network {
+                    self.network = "Ethereum".to_string();
+                }
+                if !self.secret_type.is_other_type() {
+                    self.custom_secret_type.clear();
+                }
                 self.show_type_select = false;
                 self.current_field += 1;
             }
@@ -186,13 +199,26 @@ impl AddEntryScreen {
                 }
             }
             KeyCode::Enter => {
-                self.network = match self.network_selected {
-                    0 => "Ethereum",
-                    1 => "Bitcoin",
-                    2 => "Solana",
-                    _ => "Other",
+                match self.network_selected {
+                    0 => {
+                        self.network = "Ethereum".to_string();
+                        self.use_custom_network = false;
+                        self.custom_network.clear();
+                    }
+                    1 => {
+                        self.network = "Bitcoin".to_string();
+                        self.use_custom_network = false;
+                        self.custom_network.clear();
+                    }
+                    2 => {
+                        self.network = "Solana".to_string();
+                        self.use_custom_network = false;
+                        self.custom_network.clear();
+                    }
+                    _ => {
+                        self.use_custom_network = true;
+                    }
                 }
-                .to_string();
                 self.show_network_select = false;
                 self.current_field += 1;
             }
@@ -206,92 +232,84 @@ impl AddEntryScreen {
 
     /// Field index of the secondary password toggle.
     fn secondary_toggle_field(&self) -> usize {
-        if self.is_crypto_type() {
-            // name(0), type(1), secret(2), confirm(3), network(4), notes(5), toggle(6)
-            6
-        } else {
-            // name(0), type(1), secret(2), confirm(3), username(4), url(5), notes(6), toggle(7)
-            7
-        }
+        self.notes_field() + 1
     }
 
     fn insert_char(&mut self, c: char) {
-        if self.is_crypto_type() {
-            match self.current_field {
-                0 => self.name.push(c),
-                2 => self.secret.push(c),
-                3 => self.secret_confirm.push(c),
-                // 4 = network selector, no typing
-                5 => self.notes.push(c),
-                // 6 = toggle, no typing
-                f if self.use_secondary_password && f == 7 => {
-                    self.secondary_password.push(c);
-                }
-                f if self.use_secondary_password && f == 8 => {
-                    self.secondary_password_confirm.push(c);
-                }
-                _ => {}
+        match self.current_field {
+            0 => self.name.push(c),
+            f if self.has_custom_type_field() && f == self.custom_type_field() => {
+                self.custom_secret_type.push(c);
             }
-        } else {
-            match self.current_field {
-                0 => self.name.push(c),
-                2 => self.secret.push(c),
-                3 => self.secret_confirm.push(c),
-                4 => self.username.push(c),
-                5 => self.url.push(c),
-                6 => self.notes.push(c),
-                // 7 = toggle, no typing
-                f if self.use_secondary_password && f == 8 => {
-                    self.secondary_password.push(c);
-                }
-                f if self.use_secondary_password && f == 9 => {
-                    self.secondary_password_confirm.push(c);
-                }
-                _ => {}
+            f if f == self.secret_field() => self.secret.push(c),
+            f if f == self.confirm_field() => self.secret_confirm.push(c),
+            f if self.has_custom_network_field() && f == self.custom_network_field() => {
+                self.custom_network.push(c);
             }
+            f if self.is_password_type() && f == self.username_field() => self.username.push(c),
+            f if self.is_password_type() && f == self.url_field() => self.url.push(c),
+            f if f == self.notes_field() => self.notes.push(c),
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
+                self.secondary_password.push(c);
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
+                self.secondary_password_confirm.push(c);
+            }
+            _ => {}
         }
     }
 
     fn delete_char(&mut self) {
-        if self.is_crypto_type() {
-            match self.current_field {
-                0 => { self.name.pop(); }
-                2 => { self.secret.pop(); }
-                3 => { self.secret_confirm.pop(); }
-                5 => { self.notes.pop(); }
-                f if self.use_secondary_password && f == 7 => {
-                    self.secondary_password.pop();
-                }
-                f if self.use_secondary_password && f == 8 => {
-                    self.secondary_password_confirm.pop();
-                }
-                _ => {}
+        match self.current_field {
+            0 => {
+                self.name.pop();
             }
-        } else {
-            match self.current_field {
-                0 => { self.name.pop(); }
-                2 => { self.secret.pop(); }
-                3 => { self.secret_confirm.pop(); }
-                4 => { self.username.pop(); }
-                5 => { self.url.pop(); }
-                6 => { self.notes.pop(); }
-                f if self.use_secondary_password && f == 8 => {
-                    self.secondary_password.pop();
-                }
-                f if self.use_secondary_password && f == 9 => {
-                    self.secondary_password_confirm.pop();
-                }
-                _ => {}
+            f if self.has_custom_type_field() && f == self.custom_type_field() => {
+                self.custom_secret_type.pop();
             }
+            f if f == self.secret_field() => {
+                self.secret.pop();
+            }
+            f if f == self.confirm_field() => {
+                self.secret_confirm.pop();
+            }
+            f if self.has_custom_network_field() && f == self.custom_network_field() => {
+                self.custom_network.pop();
+            }
+            f if self.is_password_type() && f == self.username_field() => {
+                self.username.pop();
+            }
+            f if self.is_password_type() && f == self.url_field() => {
+                self.url.pop();
+            }
+            f if f == self.notes_field() => {
+                self.notes.pop();
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
+                self.secondary_password.pop();
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
+                self.secondary_password_confirm.pop();
+            }
+            _ => {}
         }
     }
 
     fn field_count(&self) -> usize {
-        let base = if self.is_crypto_type() {
-            7 // name, type, secret, confirm, network, notes, toggle
-        } else {
-            8 // name, type, secret, confirm, username, url, notes, toggle
-        };
+        let mut base = 5; // name, type, secret, confirm, notes
+        if self.has_custom_type_field() {
+            base += 1;
+        }
+        if self.is_crypto_type() {
+            base += 1; // network
+        }
+        if self.has_custom_network_field() {
+            base += 1;
+        }
+        if self.is_password_type() {
+            base += 2; // username, url
+        }
+        base += 1; // toggle
         if self.use_secondary_password {
             base + 2 // secondary password + confirm
         } else {
@@ -300,13 +318,96 @@ impl AddEntryScreen {
     }
 
     fn is_crypto_type(&self) -> bool {
-        !matches!(self.secret_type, SecretType::Password)
+        self.secret_type.is_crypto_type()
+    }
+
+    fn is_password_type(&self) -> bool {
+        self.secret_type.is_password_type()
+    }
+
+    fn has_custom_type_field(&self) -> bool {
+        self.secret_type.is_other_type()
+    }
+
+    fn has_custom_network_field(&self) -> bool {
+        self.is_crypto_type() && self.use_custom_network
+    }
+
+    fn custom_type_field(&self) -> usize {
+        2
+    }
+
+    fn secret_field(&self) -> usize {
+        2 + usize::from(self.has_custom_type_field())
+    }
+
+    fn confirm_field(&self) -> usize {
+        self.secret_field() + 1
+    }
+
+    fn network_field(&self) -> usize {
+        self.confirm_field() + 1
+    }
+
+    fn custom_network_field(&self) -> usize {
+        self.network_field() + 1
+    }
+
+    fn username_field(&self) -> usize {
+        self.confirm_field() + 1
+    }
+
+    fn url_field(&self) -> usize {
+        self.username_field() + 1
+    }
+
+    fn notes_field(&self) -> usize {
+        let mut idx = self.confirm_field() + 1;
+        if self.is_crypto_type() {
+            idx += 1;
+            if self.has_custom_network_field() {
+                idx += 1;
+            }
+        } else if self.is_password_type() {
+            idx += 2;
+        }
+        idx
+    }
+
+    fn effective_secret_type(&self) -> Option<SecretType> {
+        match &self.secret_type {
+            SecretType::Other(_) => {
+                let label = self.custom_secret_type.trim();
+                if label.is_empty() {
+                    None
+                } else {
+                    Some(SecretType::Other(label.to_string()))
+                }
+            }
+            other => Some(other.clone()),
+        }
+    }
+
+    fn effective_network(&self) -> String {
+        if !self.is_crypto_type() {
+            return String::new();
+        }
+
+        if self.use_custom_network {
+            self.custom_network.trim().to_string()
+        } else {
+            self.network.clone()
+        }
     }
 
     fn try_save(&self) -> AddEntryAction {
         if self.name.is_empty() {
             return AddEntryAction::Continue;
         }
+
+        let Some(secret_type) = self.effective_secret_type() else {
+            return AddEntryAction::Continue;
+        };
 
         if self.secret.is_empty() || self.secret != self.secret_confirm {
             return AddEntryAction::Continue;
@@ -320,9 +421,14 @@ impl AddEntryScreen {
             }
         }
 
+        let network = self.effective_network();
+        if self.is_crypto_type() && network.is_empty() {
+            return AddEntryAction::Continue;
+        }
+
         // Auto-derive public address for crypto types
         let public_address = if self.is_crypto_type() {
-            match derive_address(&self.secret, &self.secret_type, &self.network) {
+            match derive_address(&self.secret, &self.secret_type, &network) {
                 Ok(addr) => addr,
                 Err(_) => None, // Bad key format — save with no address
             }
@@ -333,8 +439,15 @@ impl AddEntryScreen {
         let now = Utc::now();
 
         // Handle secondary password encryption
-        let (has_secondary, secret_to_store, encrypted_secret, encrypted_secret_nonce,
-            entry_key_wrapped, entry_key_nonce, entry_key_salt) = if self.use_secondary_password {
+        let (
+            has_secondary,
+            secret_to_store,
+            encrypted_secret,
+            encrypted_secret_nonce,
+            entry_key_wrapped,
+            entry_key_nonce,
+            entry_key_salt,
+        ) = if self.use_secondary_password {
             let ek = entry_key::generate_entry_key();
             let (ct, ct_nonce) = match entry_key::encrypt_secret(&ek, &self.secret) {
                 Ok(v) => v,
@@ -361,8 +474,8 @@ impl AddEntryScreen {
         let entry = Entry {
             name: self.name.clone(),
             secret: secret_to_store,
-            secret_type: self.secret_type.clone(),
-            network: self.network.clone(),
+            secret_type,
+            network,
             public_address,
             username: if self.username.is_empty() {
                 None
@@ -393,7 +506,11 @@ impl AddEntryScreen {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(22), Constraint::Min(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(22),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         let form_area = centered_rect(80, chunks[1]);
@@ -411,7 +528,11 @@ impl AddEntryScreen {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Add New Entry ")
-            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(Color::Cyan));
 
         frame.render_widget(block.clone(), form_area);
@@ -442,6 +563,17 @@ impl AddEntryScreen {
         lines.push(self.render_field(field_idx, "Secret type", &secret_type_str, false));
         field_idx += 1;
 
+        if self.has_custom_type_field() {
+            lines.push(Line::from(""));
+            lines.push(self.render_field(
+                field_idx,
+                "Custom type",
+                &self.custom_secret_type,
+                false,
+            ));
+            field_idx += 1;
+        }
+
         // Field 2: Secret
         lines.push(Line::from(""));
         let secret_masked = "\u{2022}".repeat(self.secret.len());
@@ -457,9 +589,25 @@ impl AddEntryScreen {
         if self.is_crypto_type() {
             // Field 4: Network
             lines.push(Line::from(""));
-            lines.push(self.render_field(field_idx, "Network", &self.network, false));
+            let network_value = if self.use_custom_network {
+                "Other"
+            } else {
+                &self.network
+            };
+            lines.push(self.render_field(field_idx, "Network", network_value, false));
             field_idx += 1;
-        } else {
+
+            if self.use_custom_network {
+                lines.push(Line::from(""));
+                lines.push(self.render_field(
+                    field_idx,
+                    "Custom network",
+                    &self.custom_network,
+                    false,
+                ));
+                field_idx += 1;
+            }
+        } else if self.is_password_type() {
             // Field 4: Username
             lines.push(Line::from(""));
             lines.push(self.render_field(field_idx, "Username (optional)", &self.username, false));
@@ -478,7 +626,11 @@ impl AddEntryScreen {
 
         // Secondary password toggle
         lines.push(Line::from(""));
-        let toggle_value = if self.use_secondary_password { "Yes" } else { "No" };
+        let toggle_value = if self.use_secondary_password {
+            "Yes"
+        } else {
+            "No"
+        };
         lines.push(self.render_field(field_idx, "Secondary password", toggle_value, false));
         field_idx += 1;
 
@@ -491,7 +643,12 @@ impl AddEntryScreen {
             field_idx += 1;
 
             lines.push(Line::from(""));
-            lines.push(self.render_field(field_idx, "Confirm secondary", &sp_confirm_masked, false));
+            lines.push(self.render_field(
+                field_idx,
+                "Confirm secondary",
+                &sp_confirm_masked,
+                false,
+            ));
         }
 
         lines.push(Line::from(""));
@@ -499,7 +656,7 @@ impl AddEntryScreen {
 
         let help_text = if self.current_field == 1 {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Select \u{2502} Tab: Next \u{2502} Esc: Cancel"
-        } else if self.is_crypto_type() && self.current_field == 4 {
+        } else if self.is_crypto_type() && self.current_field == self.network_field() {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Select \u{2502} Tab: Next \u{2502} Esc: Cancel"
         } else if self.current_field == self.secondary_toggle_field() {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Toggle \u{2502} Tab: Next \u{2502} Ctrl+S: Save \u{2502} Esc: Cancel"
@@ -555,7 +712,7 @@ impl AddEntryScreen {
     }
 
     fn render_type_select(&self, frame: &mut Frame, area: Rect) {
-        let types = ["Private Key", "Seed Phrase", "Password"];
+        let types = ["Private Key", "Seed Phrase", "Password", "Other"];
         let items: Vec<ListItem> = types
             .iter()
             .enumerate()
@@ -634,4 +791,59 @@ pub enum AddEntryAction {
     Continue,
     Save(Entry),
     Cancel,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn password_entries_do_not_keep_default_network() {
+        let mut screen = AddEntryScreen::new();
+        screen.name = "API Secret".to_string();
+        screen.secret_type = SecretType::Password;
+        screen.secret = "secret".to_string();
+        screen.secret_confirm = "secret".to_string();
+
+        let AddEntryAction::Save(entry) = screen.try_save() else {
+            panic!("expected save action");
+        };
+
+        assert!(entry.network.is_empty());
+        assert!(entry.public_address.is_none());
+    }
+
+    #[test]
+    fn custom_secret_type_uses_typed_value() {
+        let mut screen = AddEntryScreen::new();
+        screen.name = "Service Secret".to_string();
+        screen.secret_type = SecretType::Other(String::new());
+        screen.custom_secret_type = "API".to_string();
+        screen.secret = "secret".to_string();
+        screen.secret_confirm = "secret".to_string();
+
+        let AddEntryAction::Save(entry) = screen.try_save() else {
+            panic!("expected save action");
+        };
+
+        assert_eq!(entry.secret_type, SecretType::Other("API".to_string()));
+        assert!(entry.network.is_empty());
+        assert!(entry.public_address.is_none());
+    }
+
+    #[test]
+    fn custom_network_uses_typed_value() {
+        let mut screen = AddEntryScreen::new();
+        screen.name = "Custom Entry".to_string();
+        screen.secret = "not-a-real-key".to_string();
+        screen.secret_confirm = "not-a-real-key".to_string();
+        screen.use_custom_network = true;
+        screen.custom_network = "API".to_string();
+
+        let AddEntryAction::Save(entry) = screen.try_save() else {
+            panic!("expected save action");
+        };
+
+        assert_eq!(entry.network, "API");
+    }
 }

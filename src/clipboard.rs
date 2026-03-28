@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use arboard::Clipboard;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 /// Copy text to clipboard and spawn a background thread to clear it after `clear_after` seconds.
 ///

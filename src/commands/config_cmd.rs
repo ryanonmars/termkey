@@ -10,7 +10,10 @@ pub fn run(show: bool, clipboard_timeout: Option<u64>) -> Result<()> {
         println!("  TermKey Configuration");
         println!("  ─────────────────────────");
         println!("  Vault path:         {}", cfg.vault_path);
-        println!("  Clipboard timeout:  {} seconds", cfg.clipboard_timeout_secs);
+        println!(
+            "  Clipboard timeout:  {} seconds",
+            cfg.clipboard_timeout_secs
+        );
         println!("  First run complete: {}", cfg.first_run_complete);
         println!(
             "  Recovery question:  {}",

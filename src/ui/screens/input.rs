@@ -51,13 +51,21 @@ impl InputScreen {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(7), Constraint::Min(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(7),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!(" {} ", self.title))
-            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(Color::Cyan));
 
         let display_value = if self.is_password {

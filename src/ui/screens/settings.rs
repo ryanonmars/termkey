@@ -191,7 +191,10 @@ impl SettingsScreen {
         // Vault path (display only)
         lines.push(Line::from(vec![
             Span::styled("  Vault path: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&self.config.vault_path, Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                &self.config.vault_path,
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
 
         lines.push(Line::from(""));

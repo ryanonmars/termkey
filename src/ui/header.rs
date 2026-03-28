@@ -109,4 +109,3 @@ fn print_centered_line(styled: &str, raw: &str, inner: usize) {
         dim_border("│")
     );
 }
-

@@ -10,12 +10,12 @@ pub fn set_title(title: &str) {
 }
 
 pub fn clear_screen() {
-    use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveTo};
-    let _ = execute!(
-        io::stdout(),
-        Clear(ClearType::All),
-        MoveTo(0, 0)
-    );
+    use crossterm::{
+        cursor::MoveTo,
+        execute,
+        terminal::{Clear, ClearType},
+    };
+    let _ = execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0));
 }
 
 pub fn heading(text: &str) -> ColoredString {

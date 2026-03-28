@@ -2,7 +2,7 @@ use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 /// Normalize a recovery answer: trim, lowercase, collapse whitespace.
 pub fn normalize_answer(answer: &str) -> String {

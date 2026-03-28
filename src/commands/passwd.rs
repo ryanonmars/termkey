@@ -1,6 +1,6 @@
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::storage;

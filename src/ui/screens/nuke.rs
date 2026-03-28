@@ -47,9 +47,7 @@ impl NukeScreen {
                 if self.input == "DELETE" {
                     NukeAction::Confirm
                 } else {
-                    self.error_message = Some(
-                        "Type DELETE (all caps) to confirm.".to_string(),
-                    );
+                    self.error_message = Some("Type DELETE (all caps) to confirm.".to_string());
                     NukeAction::Continue
                 }
             }
@@ -72,20 +70,14 @@ impl NukeScreen {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" \u{26a0}  DELETE VAULT ")
-            .title_style(
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
             .border_style(Style::default().fg(Color::Red));
 
         let mut lines = vec![
             Line::from(""),
             Line::from(Span::styled(
                 "  WARNING: This will permanently delete your vault.",
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::styled(
                 "  ALL stored keys and seed phrases will be lost forever.",
@@ -93,26 +85,16 @@ impl NukeScreen {
             )),
             Line::from(Span::styled(
                 "  This action CANNOT be undone.",
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(vec![
-                Span::styled(
-                    "  Type ",
-                    Style::default().fg(Color::White),
-                ),
+                Span::styled("  Type ", Style::default().fg(Color::White)),
                 Span::styled(
                     "DELETE",
-                    Style::default()
-                        .fg(Color::Red)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    " to confirm: ",
-                    Style::default().fg(Color::White),
-                ),
+                Span::styled(" to confirm: ", Style::default().fg(Color::White)),
                 Span::styled(&self.input, Style::default().fg(Color::Yellow)),
                 Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
             ]),
@@ -132,7 +114,9 @@ impl NukeScreen {
             Style::default().fg(Color::DarkGray),
         )));
 
-        let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
         frame.render_widget(paragraph, chunks[1]);
     }
 }
@@ -142,7 +126,9 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers};
 
-    fn no_mod() -> KeyModifiers { KeyModifiers::empty() }
+    fn no_mod() -> KeyModifiers {
+        KeyModifiers::empty()
+    }
 
     #[test]
     fn esc_returns_cancel() {

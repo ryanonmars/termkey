@@ -4,7 +4,7 @@ use colored::Colorize;
 use dialoguer::Select;
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_box;
 use crate::vault::model::VaultData;
 use crate::vault::storage;
@@ -32,9 +32,8 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
     }
 
     println!();
-    let backup_password = Zeroizing::new(
-        rpassword::prompt_password("Backup password: ").map_err(TermKeyError::Io)?,
-    );
+    let backup_password =
+        Zeroizing::new(rpassword::prompt_password("Backup password: ").map_err(TermKeyError::Io)?);
 
     eprintln!("Decrypting backup...");
     let backup = storage::read_backup(backup_password.as_bytes(), path)?;
@@ -51,15 +50,18 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
                 backup_entry.name.cyan()
             );
 
-            let options = &["Skip", "Rename imported entry", "Overwrite existing", "Exit"];
+            let options = &[
+                "Skip",
+                "Rename imported entry",
+                "Overwrite existing",
+                "Exit",
+            ];
             let choice = Select::new()
                 .with_prompt("How to resolve?")
                 .items(options)
                 .default(0)
                 .interact()
-                .map_err(|e| {
-                    TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
-                })?;
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
             match choice {
                 0 => {
@@ -95,14 +97,12 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
         }
     }
 
-    let lines = vec![
-        format!(
-            "{} {} imported, {} skipped.",
-            "✓".green().bold(),
-            imported.to_string().bold(),
-            skipped.to_string().bold()
-        ),
-    ];
+    let lines = vec![format!(
+        "{} {} imported, {} skipped.",
+        "✓".green().bold(),
+        imported.to_string().bold(),
+        skipped.to_string().bold()
+    )];
     println!();
     print_box(Some("Import Complete"), &lines);
 

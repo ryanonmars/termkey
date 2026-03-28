@@ -3,8 +3,8 @@ pub mod borders;
 pub mod header;
 pub mod prompt;
 pub mod screens;
-pub mod theme;
 pub mod terminal;
+pub mod theme;
 pub mod widgets;
 
 use std::io::IsTerminal;
@@ -13,7 +13,11 @@ use std::io::IsTerminal;
 pub fn get_terminal_width() -> u16 {
     let term = console::Term::stdout();
     let (_, cols) = term.size();
-    if cols == 0 { 80 } else { cols }
+    if cols == 0 {
+        80
+    } else {
+        cols
+    }
 }
 
 /// Check if stdout is connected to an interactive terminal.

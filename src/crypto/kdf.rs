@@ -1,11 +1,11 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 pub const DEFAULT_M_COST: u32 = 65536; // 64 MB
-pub const DEFAULT_T_COST: u32 = 3;     // 3 iterations
-pub const DEFAULT_P_COST: u32 = 4;     // 4 parallel lanes
+pub const DEFAULT_T_COST: u32 = 3; // 3 iterations
+pub const DEFAULT_P_COST: u32 = 4; // 4 parallel lanes
 
 /// Derive a 32-byte key from password and salt using Argon2id.
 pub fn derive_key(

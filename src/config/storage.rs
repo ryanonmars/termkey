@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::model::Config;
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 /// Get the config file path (~/.termkey/config.json).
 pub fn config_path() -> PathBuf {

@@ -14,7 +14,12 @@ pub struct StatusBar {
 }
 
 impl StatusBar {
-    pub fn new(vault_name: &str, entry_count: usize, filter_text: &str, number_buffer: &str) -> Self {
+    pub fn new(
+        vault_name: &str,
+        entry_count: usize,
+        filter_text: &str,
+        number_buffer: &str,
+    ) -> Self {
         Self {
             vault_name: vault_name.to_string(),
             entry_count,

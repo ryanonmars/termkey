@@ -55,11 +55,15 @@ impl PasswordField {
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(7), Constraint::Min(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(7),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         let masked = "*".repeat(self.buffer.len());
-        
+
         let text = vec![
             Line::from(""),
             Line::from(Span::styled(
@@ -76,7 +80,11 @@ impl PasswordField {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Enter Master Password ")
-            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(Color::Cyan));
 
         let paragraph = Paragraph::new(text).block(block);

@@ -4,7 +4,7 @@ use chacha20poly1305::{
 };
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 /// Encrypt plaintext with XChaCha20-Poly1305.
 /// Returns ciphertext with appended Poly1305 tag (16 bytes).

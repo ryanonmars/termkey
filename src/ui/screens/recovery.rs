@@ -8,8 +8,8 @@ use ratatui::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::config::RecoveryConfig;
 use crate::config::model::RECOVERY_QUESTIONS;
+use crate::config::RecoveryConfig;
 use crate::crypto::recovery;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -132,8 +132,7 @@ impl RecoveryScreen {
                         return RecoveryAction::Continue;
                     }
                     Err(_) => {
-                        self.error_message =
-                            Some("Verification error. Try again.".to_string());
+                        self.error_message = Some("Verification error. Try again.".to_string());
                         self.answer.zeroize();
                         self.answer = String::new();
                         return RecoveryAction::Continue;
@@ -246,10 +245,7 @@ impl RecoveryScreen {
                 )));
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![
-                    Span::styled(
-                        "  New password: ",
-                        Style::default().fg(Color::White),
-                    ),
+                    Span::styled("  New password: ", Style::default().fg(Color::White)),
                     Span::styled(&masked, Style::default().fg(Color::Yellow)),
                     Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
                 ]));
@@ -265,10 +261,7 @@ impl RecoveryScreen {
                 )));
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![
-                    Span::styled(
-                        "  Confirm password: ",
-                        Style::default().fg(Color::White),
-                    ),
+                    Span::styled("  Confirm password: ", Style::default().fg(Color::White)),
                     Span::styled(&masked, Style::default().fg(Color::Yellow)),
                     Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
                 ]));
@@ -289,11 +282,19 @@ impl RecoveryScreen {
             Span::styled(": Submit  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
             Span::styled(": Cancel  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("F2", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-            Span::styled(": Delete vault & start over", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "F2",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                ": Delete vault & start over",
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
 
-        let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
         frame.render_widget(paragraph, chunks[1]);
     }
 }

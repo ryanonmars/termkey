@@ -37,7 +37,10 @@ pub enum RecoverySetupAction {
     Continue,
     Cancel,
     /// Setup complete: (question_index, normalized_answer)
-    Complete { question_index: u8, answer: String },
+    Complete {
+        question_index: u8,
+        answer: String,
+    },
 }
 
 impl RecoverySetupScreen {
@@ -208,7 +211,9 @@ impl RecoverySetupScreen {
                     Style::default().fg(Color::DarkGray),
                 )));
 
-                let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+                let paragraph = Paragraph::new(lines)
+                    .block(block)
+                    .wrap(Wrap { trim: false });
                 frame.render_widget(paragraph, centered);
             }
             Step::EnterAnswer => {
@@ -249,7 +254,9 @@ impl RecoverySetupScreen {
                     Style::default().fg(Color::DarkGray),
                 )));
 
-                let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+                let paragraph = Paragraph::new(lines)
+                    .block(block)
+                    .wrap(Wrap { trim: false });
                 frame.render_widget(paragraph, centered);
             }
             Step::ConfirmAnswer => {
@@ -283,7 +290,9 @@ impl RecoverySetupScreen {
                     Style::default().fg(Color::DarkGray),
                 )));
 
-                let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+                let paragraph = Paragraph::new(lines)
+                    .block(block)
+                    .wrap(Wrap { trim: false });
                 frame.render_widget(paragraph, centered);
             }
         }

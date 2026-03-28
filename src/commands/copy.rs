@@ -1,7 +1,7 @@
 use colored::Colorize;
 
 use crate::clipboard;
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_success;
 use crate::vault::model::VaultData;
 use crate::vault::storage;

@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 
 /// Argon2 params for per-entry key wrapping (lighter than vault KDF).
 fn entry_key_params() -> (u32, u32, u32) {
@@ -143,8 +143,7 @@ mod tests {
         let (encrypted_secret, secret_nonce) = encrypt_secret(&entry_key, secret).unwrap();
 
         // Wrap entry key with view password
-        let (wrapped_key, key_nonce, key_salt) =
-            wrap_entry_key(&entry_key, view_password).unwrap();
+        let (wrapped_key, key_nonce, key_salt) = wrap_entry_key(&entry_key, view_password).unwrap();
 
         // Later: unwrap entry key with view password
         let recovered_key =

@@ -1,27 +1,32 @@
 use colored::{ColoredString, Colorize};
 use dialoguer::Select;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui;
 use crate::ui::borders::{print_table_box, truncate_display};
 use crate::vault::model::{EntryMeta, SecretType};
 use crate::vault::storage;
 
-fn parse_type_filter(filter: &str) -> Option<SecretType> {
+#[derive(Clone, Copy)]
+enum TypeFilter {
+    PrivateKey,
+    SeedPhrase,
+    Password,
+    Other,
+}
+
+fn parse_type_filter(filter: &str) -> Option<TypeFilter> {
     match filter.to_lowercase().as_str() {
-        "privatekey" | "private-key" | "private_key" => Some(SecretType::PrivateKey),
-        "seedphrase" | "seed-phrase" | "seed_phrase" => Some(SecretType::SeedPhrase),
-        "password" | "passwords" => Some(SecretType::Password),
+        "privatekey" | "private-key" | "private_key" => Some(TypeFilter::PrivateKey),
+        "seedphrase" | "seed-phrase" | "seed_phrase" => Some(TypeFilter::SeedPhrase),
+        "password" | "passwords" => Some(TypeFilter::Password),
+        "other" => Some(TypeFilter::Other),
         _ => None,
     }
 }
 
 fn type_str(st: &SecretType) -> String {
-    match st {
-        SecretType::PrivateKey => "Private Key".to_string(),
-        SecretType::SeedPhrase => "Seed Phrase".to_string(),
-        SecretType::Password => "Password".to_string(),
-    }
+    st.to_string()
 }
 
 fn type_color(s: &str) -> ColoredString {
@@ -29,12 +34,13 @@ fn type_color(s: &str) -> ColoredString {
         "Private Key" => s.yellow(),
         "Seed Phrase" => s.magenta(),
         "Password" => s.green(),
+        "Other" => s.blue(),
         _ => s.normal(),
     }
 }
 
 fn build_row(i: usize, entry: &EntryMeta) -> Vec<String> {
-    let addr_or_url = if entry.secret_type == SecretType::Password {
+    let addr_or_url = if entry.secret_type.is_password_type() {
         entry
             .url
             .as_deref()
@@ -54,11 +60,7 @@ fn build_row(i: usize, entry: &EntryMeta) -> Vec<String> {
         entry.network.clone()
     };
 
-    let username = entry
-        .username
-        .as_deref()
-        .unwrap_or("-")
-        .to_string();
+    let username = entry.username.as_deref().unwrap_or("-").to_string();
 
     vec![
         format!("{}", i + 1),
@@ -72,12 +74,12 @@ fn build_row(i: usize, entry: &EntryMeta) -> Vec<String> {
 
 fn col_styles() -> Vec<fn(&str) -> ColoredString> {
     vec![
-        |s| s.dimmed(),       // #
-        |s| s.cyan(),         // NAME
-        |s| s.normal(),       // NETWORK
-        |s| type_color(s),    // TYPE
-        |s| s.normal(),       // USERNAME
-        |s| s.dimmed(),       // ADDRESS / URL
+        |s| s.dimmed(),    // #
+        |s| s.cyan(),      // NAME
+        |s| s.normal(),    // NETWORK
+        |s| type_color(s), // TYPE
+        |s| s.normal(),    // USERNAME
+        |s| s.dimmed(),    // ADDRESS / URL
     ]
 }
 
@@ -90,7 +92,7 @@ pub fn run(filter: Option<&str>) -> Result<()> {
             eprintln!(
                 "{}",
                 format!(
-                    "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password",
+                    "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password, other",
                     f
                 )
                 .red()
@@ -114,7 +116,7 @@ pub fn run_with_vault(vault: &crate::vault::model::VaultData, filter: Option<&st
             eprintln!(
                 "{}",
                 format!(
-                    "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password",
+                    "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password, other",
                     f
                 )
                 .red()
@@ -132,9 +134,12 @@ fn filter_meta(meta: &[EntryMeta], filter: Option<&str>) -> Vec<(usize, EntryMet
     meta.iter()
         .enumerate()
         .filter(|(_, e)| {
-            type_filter
-                .as_ref()
-                .map_or(true, |ft| e.secret_type == *ft)
+            type_filter.as_ref().map_or(true, |ft| match ft {
+                TypeFilter::PrivateKey => e.secret_type == SecretType::PrivateKey,
+                TypeFilter::SeedPhrase => e.secret_type == SecretType::SeedPhrase,
+                TypeFilter::Password => e.secret_type == SecretType::Password,
+                TypeFilter::Other => matches!(e.secret_type, SecretType::Other(_)),
+            })
         })
         .map(|(i, e)| (i, e.clone()))
         .collect()
@@ -188,8 +193,8 @@ fn interactive_loop(filter: Option<&str>) -> Result<()> {
             println!("{}", "No entries stored yet.".dimmed());
             println!(
                 "{}",
-            "Use `termkey add` to store your first key or phrase.".dimmed()
-        );
+                "Use `termkey add` to store your first key or phrase.".dimmed()
+            );
             return Ok(());
         }
 

@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_success;
 use crate::ui::theme::heading;
 use crate::vault::model::{SecretType, VaultData};
@@ -24,7 +24,10 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     println!();
-    println!("  {}", heading("Edit entry (press Enter to keep current value)"));
+    println!(
+        "  {}",
+        heading("Edit entry (press Enter to keep current value)")
+    );
     println!();
 
     // Name
@@ -42,7 +45,8 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     }
 
     // Re-fetch the entry after borrow checker satisfaction
-    let entry = vault.find_entry_mut_by_id(name)
+    let entry = vault
+        .find_entry_mut_by_id(name)
         .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
     // Secret type
@@ -50,8 +54,9 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         SecretType::PrivateKey => 0,
         SecretType::SeedPhrase => 1,
         SecretType::Password => 2,
+        SecretType::Other(_) => 3,
     };
-    let type_options = &["Private Key", "Seed Phrase", "Password", "Exit"];
+    let type_options = &["Private Key", "Seed Phrase", "Password", "Other", "Exit"];
     let type_idx = Select::new()
         .with_prompt(format!("Secret type [{}]", entry.secret_type))
         .items(type_options)
@@ -59,24 +64,43 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .interact()
         .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
-    if type_idx == 3 {
+    if type_idx == 4 {
         return Err(TermKeyError::Cancelled);
     }
 
     let new_type = match type_idx {
         0 => SecretType::PrivateKey,
         1 => SecretType::SeedPhrase,
-        _ => SecretType::Password,
+        2 => SecretType::Password,
+        _ => {
+            let current_other = match &entry.secret_type {
+                SecretType::Other(label) => label.clone(),
+                _ => String::new(),
+            };
+            let custom_type: String = Input::new()
+                .with_prompt(format!(
+                    "Custom secret type [{}]",
+                    if current_other.is_empty() {
+                        "(none)"
+                    } else {
+                        &current_other
+                    }
+                ))
+                .default(current_other)
+                .interact_text()
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            let custom_type = custom_type.trim().to_string();
+            if custom_type.is_empty() {
+                return Err(TermKeyError::Cancelled);
+            }
+            SecretType::Other(custom_type)
+        }
     };
 
     let old_type = entry.secret_type.clone();
 
     // Secret (optional change)
-    println!(
-        "  {} {}",
-        "Current secret:".dimmed(),
-        "••••••••".dimmed()
-    );
+    println!("  {} {}", "Current secret:".dimmed(), "••••••••".dimmed());
     let change_secret = dialoguer::Confirm::new()
         .with_prompt("Change secret?")
         .default(false)
@@ -85,12 +109,10 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
 
     let new_secret = if change_secret {
         let secret = Zeroizing::new(
-            rpassword::prompt_password("New secret (hidden): ")
-                .map_err(TermKeyError::Io)?,
+            rpassword::prompt_password("New secret (hidden): ").map_err(TermKeyError::Io)?,
         );
         let confirm = Zeroizing::new(
-            rpassword::prompt_password("Confirm secret (hidden): ")
-                .map_err(TermKeyError::Io)?,
+            rpassword::prompt_password("Confirm secret (hidden): ").map_err(TermKeyError::Io)?,
         );
         if *secret != *confirm {
             return Err(TermKeyError::PasswordMismatch);
@@ -101,28 +123,42 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     };
 
     // Type-specific fields
-    let (new_network, new_public_address, new_username, new_url) = if new_type == SecretType::Password {
+    let (new_network, new_public_address, new_username, new_url) = if new_type.is_password_type() {
         // Password type: prompt for username/url, clear network/address
-        let current_uname = if old_type == SecretType::Password {
+        let current_uname = if old_type.is_password_type() {
             entry.username.clone().unwrap_or_default()
         } else {
             String::new()
         };
-        let current_url = if old_type == SecretType::Password {
+        let current_url = if old_type.is_password_type() {
             entry.url.clone().unwrap_or_default()
         } else {
             String::new()
         };
 
         let uname: String = Input::new()
-            .with_prompt(format!("Username [{}]", if current_uname.is_empty() { "(none)" } else { &current_uname }))
+            .with_prompt(format!(
+                "Username [{}]",
+                if current_uname.is_empty() {
+                    "(none)"
+                } else {
+                    &current_uname
+                }
+            ))
             .default(current_uname)
             .interact_text()
             .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         let uname = uname.trim().to_string();
 
         let url_val: String = Input::new()
-            .with_prompt(format!("URL [{}]", if current_url.is_empty() { "(none)" } else { &current_url }))
+            .with_prompt(format!(
+                "URL [{}]",
+                if current_url.is_empty() {
+                    "(none)"
+                } else {
+                    &current_url
+                }
+            ))
             .default(current_url)
             .interact_text()
             .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
@@ -132,35 +168,53 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             String::new(),
             None,
             if uname.is_empty() { None } else { Some(uname) },
-            if url_val.is_empty() { None } else { Some(url_val) },
+            if url_val.is_empty() {
+                None
+            } else {
+                Some(url_val)
+            },
         )
-    } else {
+    } else if new_type.is_crypto_type() {
         // PrivateKey / SeedPhrase: prompt for network/address, clear username/url
-        let default_network = if old_type == SecretType::Password {
-            String::new()
-        } else {
+        let default_network = if old_type.is_crypto_type() {
             entry.network.clone()
+        } else {
+            String::new()
         };
 
         let new_network: String = Input::new()
-            .with_prompt(format!("Network [{}]", if default_network.is_empty() { "(none)" } else { &default_network }))
+            .with_prompt(format!(
+                "Network [{}]",
+                if default_network.is_empty() {
+                    "(none)"
+                } else {
+                    &default_network
+                }
+            ))
             .default(default_network)
             .interact_text()
             .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         let new_public_address = if new_type == SecretType::PrivateKey {
-            let current = if old_type == SecretType::Password {
-                ""
-            } else {
+            let current = if old_type.is_crypto_type() {
                 entry.public_address.as_deref().unwrap_or("")
-            };
-            let default_addr = if old_type == SecretType::Password {
-                String::new()
             } else {
+                ""
+            };
+            let default_addr = if old_type.is_crypto_type() {
                 entry.public_address.clone().unwrap_or_default()
+            } else {
+                String::new()
             };
             let addr: String = Input::new()
-                .with_prompt(format!("Public address [{}]", if current.is_empty() { "(none)" } else { current }))
+                .with_prompt(format!(
+                    "Public address [{}]",
+                    if current.is_empty() {
+                        "(none)"
+                    } else {
+                        current
+                    }
+                ))
                 .default(default_addr)
                 .interact_text()
                 .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
@@ -174,7 +228,14 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             None
         };
 
-        (new_network.trim().to_string(), new_public_address, None, None)
+        (
+            new_network.trim().to_string(),
+            new_public_address,
+            None,
+            None,
+        )
+    } else {
+        (String::new(), None, None, None)
     };
 
     // Notes

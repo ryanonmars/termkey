@@ -1,9 +1,9 @@
 use colored::Colorize;
 use dialoguer::{Confirm, Select};
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_box;
-use crate::vault::model::{SecretType, VaultData};
+use crate::vault::model::VaultData;
 use crate::vault::storage;
 
 pub fn run(name: &str) -> Result<()> {
@@ -27,7 +27,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
     if let Some(ref addr) = entry.public_address {
         lines.push(format!("{:<16} {}", "Public address:".bold(), addr));
     }
-    if entry.secret_type == SecretType::Password {
+    if entry.secret_type.is_password_type() {
         if let Some(ref uname) = entry.username {
             lines.push(format!("{:<16} {}", "Username:".bold(), uname));
         }
@@ -63,7 +63,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
         println!();
         println!("  {} {}", "Secret:".bold(), entry.secret.red());
         println!();
-        
+
         let options = &["Clear screen and continue", "Keep visible"];
         let clear_choice = Select::new()
             .with_prompt("What would you like to do?")
@@ -71,14 +71,15 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
             .default(0)
             .interact()
             .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-        
+
         if clear_choice == 0 {
-            use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveTo};
-            execute!(
-                std::io::stdout(),
-                Clear(ClearType::All),
-                MoveTo(0, 0)
-            ).map_err(TermKeyError::Io)?;
+            use crossterm::{
+                cursor::MoveTo,
+                execute,
+                terminal::{Clear, ClearType},
+            };
+            execute!(std::io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
+                .map_err(TermKeyError::Io)?;
         }
     }
 

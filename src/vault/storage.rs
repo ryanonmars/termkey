@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::vault::model::{BackupHeader, EntryMeta, VaultData, VaultHeader};
 
 /// Get the vault directory path, respecting TERMKEY_VAULT_DIR env var.
@@ -101,8 +101,10 @@ pub fn read_metadata(path: &Path) -> Result<Vec<EntryMeta>> {
     if data.len() < 12 + meta_len {
         return Ok(Vec::new());
     }
-    let meta_json = std::str::from_utf8(&data[12..12 + meta_len]).map_err(|_| TermKeyError::InvalidVaultFormat)?;
-    let meta: Vec<EntryMeta> = serde_json::from_str(meta_json).map_err(|_| TermKeyError::InvalidVaultFormat)?;
+    let meta_json = std::str::from_utf8(&data[12..12 + meta_len])
+        .map_err(|_| TermKeyError::InvalidVaultFormat)?;
+    let meta: Vec<EntryMeta> =
+        serde_json::from_str(meta_json).map_err(|_| TermKeyError::InvalidVaultFormat)?;
     Ok(meta)
 }
 
@@ -186,7 +188,11 @@ pub fn read_backup(password: &[u8], path: &Path) -> Result<VaultData> {
     read_encrypted_file(password, path, BackupHeader::MAGIC)
 }
 
-fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -> Result<VaultData> {
+fn read_encrypted_file(
+    password: &[u8],
+    path: &Path,
+    expected_magic: &[u8; 4],
+) -> Result<VaultData> {
     let data = fs::read(path)?;
 
     if data.len() < VaultHeader::HEADER_SIZE_V1 {
@@ -220,7 +226,8 @@ fn read_encrypted_file(password: &[u8], path: &Path, expected_magic: &[u8; 4]) -
     let mut nonce = [0u8; 24];
     nonce.copy_from_slice(&data[salt_offset + 44..salt_offset + 68]);
 
-    let ct_len = u32::from_le_bytes(data[salt_offset + 68..salt_offset + 72].try_into().unwrap()) as usize;
+    let ct_len =
+        u32::from_le_bytes(data[salt_offset + 68..salt_offset + 72].try_into().unwrap()) as usize;
 
     if data.len() < ct_offset + ct_len {
         return Err(TermKeyError::InvalidVaultFormat);
@@ -242,8 +249,7 @@ pub fn prompt_and_unlock() -> Result<(VaultData, Zeroizing<String>)> {
     }
 
     let password = Zeroizing::new(
-        rpassword::prompt_password("Master password: ")
-            .map_err(|e| TermKeyError::Io(e))?,
+        rpassword::prompt_password("Master password: ").map_err(|e| TermKeyError::Io(e))?,
     );
 
     if password.is_empty() {
@@ -338,9 +344,11 @@ pub fn read_vault_with_key(key: &[u8; 32], raw_data: &[u8]) -> Result<VaultData>
     }
     let mut nonce = [0u8; 24];
     nonce.copy_from_slice(&raw_data[salt_offset + 44..salt_offset + 68]);
-    let ct_len =
-        u32::from_le_bytes(raw_data[salt_offset + 68..salt_offset + 72].try_into().unwrap())
-            as usize;
+    let ct_len = u32::from_le_bytes(
+        raw_data[salt_offset + 68..salt_offset + 72]
+            .try_into()
+            .unwrap(),
+    ) as usize;
     if raw_data.len() < ct_offset + ct_len {
         return Err(TermKeyError::InvalidVaultFormat);
     }

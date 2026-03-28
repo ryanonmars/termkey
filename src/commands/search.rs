@@ -1,8 +1,8 @@
 use colored::{ColoredString, Colorize};
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::{print_table_box, truncate_display};
-use crate::vault::model::{EntryMeta, SecretType};
+use crate::vault::model::EntryMeta;
 use crate::vault::storage;
 
 pub fn run(query: &str) -> Result<()> {
@@ -11,13 +11,16 @@ pub fn run(query: &str) -> Result<()> {
 }
 
 fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
-
     let query_lower = query.to_lowercase();
     let matches: Vec<_> = meta
         .iter()
         .enumerate()
         .filter(|(_, e)| {
             e.name.to_lowercase().contains(&query_lower)
+                || e.secret_type
+                    .to_string()
+                    .to_lowercase()
+                    .contains(&query_lower)
                 || e.network.to_lowercase().contains(&query_lower)
                 || e.notes.to_lowercase().contains(&query_lower)
                 || e.username
@@ -37,12 +40,8 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
     let rows: Vec<Vec<String>> = matches
         .iter()
         .map(|(i, entry)| {
-            let type_str = match entry.secret_type {
-                SecretType::PrivateKey => "Private Key".to_string(),
-                SecretType::SeedPhrase => "Seed Phrase".to_string(),
-                SecretType::Password => "Password".to_string(),
-            };
-            let addr_or_url = if entry.secret_type == SecretType::Password {
+            let type_str = entry.secret_type.to_string();
+            let addr_or_url = if entry.secret_type.is_password_type() {
                 entry
                     .url
                     .as_deref()
@@ -60,11 +59,7 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
             } else {
                 entry.network.clone()
             };
-            let username = entry
-                .username
-                .as_deref()
-                .unwrap_or("-")
-                .to_string();
+            let username = entry.username.as_deref().unwrap_or("-").to_string();
             vec![
                 format!("{}", i + 1),
                 entry.name.clone(),

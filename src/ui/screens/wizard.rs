@@ -194,8 +194,7 @@ impl WizardScreen {
                 KeyCode::Enter => {
                     let trimmed = self.recovery_answer.trim();
                     if trimmed.len() < 3 {
-                        self.error_message =
-                            Some("Answer must be at least 3 characters.".into());
+                        self.error_message = Some("Answer must be at least 3 characters.".into());
                         WizardAction::Continue
                     } else {
                         self.step = WizardStep::RecoveryConfirmAnswer;
@@ -479,9 +478,7 @@ impl WizardScreen {
             )
             .border_style(Style::default().fg(Color::Yellow));
 
-        let paragraph = Paragraph::new(text)
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
         let centered = center_vertical(area, 10);
         frame.render_widget(paragraph, centered);
     }

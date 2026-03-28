@@ -1,4 +1,4 @@
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::vault::model::SecretType;
 
 /// Derive a public address from a secret (private key or seed phrase).
@@ -85,13 +85,16 @@ fn derive_eth_from_seed(secret: &str) -> Result<String> {
 
     // BIP32 derivation: m/44'/60'/0'/0/0
     // Simple HMAC-SHA512 based derivation
-    let key_bytes = bip32_derive_secp256k1(&seed, &[
-        0x8000002C, // 44'
-        0x8000003C, // 60'
-        0x80000000, // 0'
-        0x00000000, // 0
-        0x00000000, // 0
-    ])?;
+    let key_bytes = bip32_derive_secp256k1(
+        &seed,
+        &[
+            0x8000002C, // 44'
+            0x8000003C, // 60'
+            0x80000000, // 0'
+            0x00000000, // 0
+            0x00000000, // 0
+        ],
+    )?;
 
     let signing_key = SigningKey::from_bytes((&key_bytes).into())
         .map_err(|e| TermKeyError::DerivationFailed(format!("BIP32 key error: {}", e)))?;
@@ -130,13 +133,16 @@ fn derive_btc_from_seed(secret: &str) -> Result<String> {
     let seed = mnemonic.to_seed("");
 
     // BIP32 derivation: m/84'/0'/0'/0/0 for native segwit
-    let key_bytes = bip32_derive_secp256k1(&seed, &[
-        0x80000054, // 84'
-        0x80000000, // 0'
-        0x80000000, // 0'
-        0x00000000, // 0
-        0x00000000, // 0
-    ])?;
+    let key_bytes = bip32_derive_secp256k1(
+        &seed,
+        &[
+            0x80000054, // 84'
+            0x80000000, // 0'
+            0x80000000, // 0'
+            0x00000000, // 0
+            0x00000000, // 0
+        ],
+    )?;
 
     let secp = bitcoin::secp256k1::Secp256k1::new();
     let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&key_bytes)
@@ -213,12 +219,15 @@ fn derive_sol_from_seed(secret: &str) -> Result<String> {
 
     // SLIP-10 / BIP44-Ed25519 derivation: m/44'/501'/0'/0'
     // This matches Phantom, Solflare, and other standard Solana wallets.
-    let key_bytes = slip10_derive_ed25519(&seed, &[
-        0x8000002C, // 44'
-        0x800001F5, // 501'
-        0x80000000, // 0'
-        0x80000000, // 0'
-    ])?;
+    let key_bytes = slip10_derive_ed25519(
+        &seed,
+        &[
+            0x8000002C, // 44'
+            0x800001F5, // 501'
+            0x80000000, // 0'
+            0x80000000, // 0'
+        ],
+    )?;
 
     let signing_key = SigningKey::from_bytes(&key_bytes);
     let pubkey = signing_key.verifying_key();
@@ -372,7 +381,7 @@ mod tests {
         let addr = result.unwrap();
         assert!(addr.starts_with("0x"));
         assert_eq!(addr.len(), 42); // 0x + 40 hex chars
-        // This is the first Hardhat/Anvil account
+                                    // This is the first Hardhat/Anvil account
         assert_eq!(addr, "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     }
 

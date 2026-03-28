@@ -8,6 +8,21 @@ pub enum SecretType {
     PrivateKey,
     SeedPhrase,
     Password,
+    Other(String),
+}
+
+impl SecretType {
+    pub fn is_crypto_type(&self) -> bool {
+        matches!(self, Self::PrivateKey | Self::SeedPhrase)
+    }
+
+    pub fn is_password_type(&self) -> bool {
+        matches!(self, Self::Password)
+    }
+
+    pub fn is_other_type(&self) -> bool {
+        matches!(self, Self::Other(_))
+    }
 }
 
 impl fmt::Display for SecretType {
@@ -16,6 +31,13 @@ impl fmt::Display for SecretType {
             SecretType::PrivateKey => write!(f, "Private Key"),
             SecretType::SeedPhrase => write!(f, "Seed Phrase"),
             SecretType::Password => write!(f, "Password"),
+            SecretType::Other(label) => {
+                if label.trim().is_empty() {
+                    write!(f, "Other")
+                } else {
+                    write!(f, "{}", label.trim())
+                }
+            }
         }
     }
 }
@@ -113,12 +135,18 @@ impl VaultData {
 
     pub fn find_entry(&self, name: &str) -> Option<&Entry> {
         let name_lower = name.to_lowercase();
-        self.entries.iter().find(|e| e.name.to_lowercase() == name_lower)
+        self.entries
+            .iter()
+            .find(|e| e.name.to_lowercase() == name_lower)
     }
 
     pub fn remove_entry(&mut self, name: &str) -> Option<Entry> {
         let name_lower = name.to_lowercase();
-        if let Some(pos) = self.entries.iter().position(|e| e.name.to_lowercase() == name_lower) {
+        if let Some(pos) = self
+            .entries
+            .iter()
+            .position(|e| e.name.to_lowercase() == name_lower)
+        {
             Some(self.entries.remove(pos))
         } else {
             None
@@ -137,7 +165,9 @@ impl VaultData {
             }
         }
         let id_lower = id.to_lowercase();
-        self.entries.iter().position(|e| e.name.to_lowercase() == id_lower)
+        self.entries
+            .iter()
+            .position(|e| e.name.to_lowercase() == id_lower)
     }
 
     pub fn find_entry_by_id(&self, id: &str) -> Option<&Entry> {

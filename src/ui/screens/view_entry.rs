@@ -45,7 +45,11 @@ impl ViewEntryScreen {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(20), Constraint::Min(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(20),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         let view_area = centered_rect(70, chunks[1]);
@@ -53,7 +57,11 @@ impl ViewEntryScreen {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!(" Entry: {} ", self.entry.name))
-            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(Color::Cyan));
 
         frame.render_widget(block.clone(), view_area);
@@ -72,10 +80,13 @@ impl ViewEntryScreen {
 
         lines.push(Line::from(""));
 
-        if !matches!(self.entry.secret_type, crate::vault::model::SecretType::Password) {
+        if self.entry.secret_type.is_crypto_type() {
             lines.push(Line::from(vec![
                 Span::styled("Network: ", Style::default().fg(Color::Cyan)),
-                Span::styled(self.entry.network.clone(), Style::default().fg(Color::White)),
+                Span::styled(
+                    self.entry.network.clone(),
+                    Style::default().fg(Color::White),
+                ),
             ]));
 
             if let Some(ref addr) = self.entry.public_address {
@@ -84,7 +95,7 @@ impl ViewEntryScreen {
                     Span::styled(addr.clone(), Style::default().fg(Color::White)),
                 ]));
             }
-        } else {
+        } else if self.entry.secret_type.is_password_type() {
             if let Some(ref username) = self.entry.username {
                 lines.push(Line::from(vec![
                     Span::styled("Username: ", Style::default().fg(Color::Cyan)),

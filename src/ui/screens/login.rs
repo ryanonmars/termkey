@@ -21,7 +21,11 @@ impl LoginScreen {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Option<Zeroizing<String>> {
+    pub fn handle_key(
+        &mut self,
+        key: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> Option<Zeroizing<String>> {
         match self.password_field.handle_key(key, modifiers) {
             PasswordAction::Submit(password) => Some(Zeroizing::new(password)),
             PasswordAction::Cancel => None,

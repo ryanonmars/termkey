@@ -41,7 +41,11 @@ impl MenuBar {
         let mut current_width = 0usize;
         for (key, label) in &self.items {
             let item_w = item_width(key, label);
-            let need = if current_width == 0 { 1 + item_w } else { current_width + item_w };
+            let need = if current_width == 0 {
+                1 + item_w
+            } else {
+                current_width + item_w
+            };
             if need > w && current_width > 0 {
                 lines += 1;
                 current_width = 1 + item_w;
@@ -71,7 +75,9 @@ impl MenuBar {
             }
             current_spans.push(Span::styled(
                 format!("[{}]", key),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ));
             current_spans.push(Span::raw(format!("{} ", label)));
             current_width += item_w;
@@ -80,8 +86,8 @@ impl MenuBar {
             lines.push(Line::from(current_spans));
         }
 
-        let paragraph = Paragraph::new(lines)
-            .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        let paragraph =
+            Paragraph::new(lines).style(Style::default().bg(Color::DarkGray).fg(Color::White));
 
         frame.render_widget(paragraph, area);
     }

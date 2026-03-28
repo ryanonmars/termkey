@@ -1,8 +1,8 @@
 use colored::{ColoredString, Colorize};
 use unicode_width::UnicodeWidthStr;
 
-use super::{get_terminal_width, is_interactive};
 use super::theme::dim_border;
+use super::{get_terminal_width, is_interactive};
 
 /// Measure the display width of a string, ignoring ANSI escape codes.
 fn display_width(s: &str) -> usize {
@@ -103,12 +103,7 @@ pub fn print_box(title: Option<&str>, lines: &[String]) {
     // Content lines
     for line in lines {
         let padded = pad_to(line, inner);
-        println!(
-            "{} {} {}",
-            dim_border("│"),
-            padded,
-            dim_border("│")
-        );
+        println!("{} {} {}", dim_border("│"), padded, dim_border("│"));
     }
 
     // Bottom border
@@ -160,7 +155,11 @@ pub fn print_table_box(
                 .iter()
                 .enumerate()
                 .map(|(i, cell)| {
-                    let w = if i < col_count { col_widths[i] + 2 } else { cell.len() + 2 };
+                    let w = if i < col_count {
+                        col_widths[i] + 2
+                    } else {
+                        cell.len() + 2
+                    };
                     format!("{:<width$}", cell, width = w)
                 })
                 .collect();
@@ -214,12 +213,7 @@ pub fn print_table_box(
         .collect();
     let header_line = header_cells.join("");
     let header_padded = pad_to(&header_line, inner);
-    println!(
-        "{} {} {}",
-        dim_border("│"),
-        header_padded,
-        dim_border("│")
-    );
+    println!("{} {} {}", dim_border("│"), header_padded, dim_border("│"));
 
     // Header separator
     println!(
@@ -236,7 +230,11 @@ pub fn print_table_box(
             .iter()
             .enumerate()
             .map(|(i, cell)| {
-                let w = if i < col_widths.len() { col_widths[i] } else { cell.len() };
+                let w = if i < col_widths.len() {
+                    col_widths[i]
+                } else {
+                    cell.len()
+                };
                 let truncated = truncate_display(cell, w.saturating_sub(1)); // leave 1 col gap
                 let style_fn = col_styles.get(i).copied().unwrap_or(default_style);
                 let styled = format!("{}", style_fn(&truncated));
@@ -245,12 +243,7 @@ pub fn print_table_box(
             .collect();
         let row_line = row_cells.join("");
         let row_padded = pad_to(&row_line, inner);
-        println!(
-            "{} {} {}",
-            dim_border("│"),
-            row_padded,
-            dim_border("│")
-        );
+        println!("{} {} {}", dim_border("│"), row_padded, dim_border("│"));
     }
 
     // Bottom border
@@ -332,4 +325,3 @@ pub fn print_error(msg: &str) {
     }
     eprintln!("  {} {}", "Error:".red().bold(), msg);
 }
-

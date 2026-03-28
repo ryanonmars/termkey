@@ -45,7 +45,11 @@ impl ConfirmScreen {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(8), Constraint::Min(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(8),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         let inner_chunks = Layout::default()
@@ -56,11 +60,15 @@ impl ConfirmScreen {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!(" {} ", self.title))
-            .title_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(Color::Yellow));
 
-        let message_para = Paragraph::new(self.message.as_str())
-            .style(Style::default().fg(Color::White));
+        let message_para =
+            Paragraph::new(self.message.as_str()).style(Style::default().fg(Color::White));
 
         frame.render_widget(block.clone(), chunks[1]);
         frame.render_widget(message_para, inner_chunks[0]);

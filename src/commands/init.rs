@@ -1,7 +1,7 @@
 use colored::Colorize;
 use zeroize::Zeroizing;
 
-use crate::error::{TermKeyError, Result};
+use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_box;
 use crate::ui::theme::heading;
 use crate::vault::model::VaultData;
@@ -18,8 +18,7 @@ pub fn run() -> Result<()> {
     println!();
 
     let password = Zeroizing::new(
-        rpassword::prompt_password("Choose a master password: ")
-            .map_err(TermKeyError::Io)?,
+        rpassword::prompt_password("Choose a master password: ").map_err(TermKeyError::Io)?,
     );
 
     if password.is_empty() {
@@ -27,8 +26,7 @@ pub fn run() -> Result<()> {
     }
 
     let confirm = Zeroizing::new(
-        rpassword::prompt_password("Confirm master password: ")
-            .map_err(TermKeyError::Io)?,
+        rpassword::prompt_password("Confirm master password: ").map_err(TermKeyError::Io)?,
     );
 
     if *password != *confirm {
