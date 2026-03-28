@@ -89,6 +89,8 @@ Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/late
 
 Run `termkey` with no subcommand to open the TUI.
 
+When terminal graphics are supported, TermKey shows a short pre-TUI splash icon before entering the fullscreen app. The current best-effort targets are Kitty and Ghostty via the Kitty graphics protocol. `tmux` is disabled by default because redraws can wipe terminal images. Override detection with `TERMKEY_GRAPHICS=kitty`, disable it with `TERMKEY_GRAPHICS=off`, and adjust the delay with `TERMKEY_SPLASH_MS=<milliseconds>`.
+
 On first launch, TermKey opens a setup wizard where you:
 
 1. Create your master password
