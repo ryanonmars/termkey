@@ -5,6 +5,14 @@ use crate::ui::borders::{print_table_box, truncate_display};
 use crate::vault::model::EntryMeta;
 use crate::vault::storage;
 
+fn display_name(entry: &EntryMeta) -> String {
+    if entry.has_secondary_password {
+        format!("{} [locked]", entry.name)
+    } else {
+        entry.name.clone()
+    }
+}
+
 pub fn run(query: &str) -> Result<()> {
     let meta = storage::read_vault_metadata()?;
     run_with_meta(&meta, query)
@@ -36,37 +44,14 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
         return Err(TermKeyError::NoSearchResults(query.to_string()));
     }
 
-    let headers = &["#", "NAME", "NETWORK", "TYPE", "USERNAME", "ADDRESS / URL"];
+    let headers = &["#", "NAME", "TYPE"];
     let rows: Vec<Vec<String>> = matches
         .iter()
         .map(|(i, entry)| {
-            let type_str = entry.secret_type.to_string();
-            let addr_or_url = if entry.secret_type.is_password_type() {
-                entry
-                    .url
-                    .as_deref()
-                    .map(|s| truncate_display(s, 20))
-                    .unwrap_or_else(|| "-".to_string())
-            } else {
-                entry
-                    .public_address
-                    .as_deref()
-                    .map(|s| truncate_display(s, 20))
-                    .unwrap_or_else(|| "-".to_string())
-            };
-            let network = if entry.network.is_empty() {
-                "-".to_string()
-            } else {
-                entry.network.clone()
-            };
-            let username = entry.username.as_deref().unwrap_or("-").to_string();
             vec![
                 format!("{}", i + 1),
-                entry.name.clone(),
-                network,
-                type_str,
-                username,
-                addr_or_url,
+                truncate_display(&display_name(entry), 48),
+                entry.secret_type.to_string(),
             ]
         })
         .collect();
@@ -74,15 +59,13 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
     let col_styles: Vec<fn(&str) -> ColoredString> = vec![
         |s| s.dimmed(),
         |s| s.cyan(),
-        |s| s.normal(),
         |s| match s {
             "Private Key" => s.yellow(),
             "Seed Phrase" => s.magenta(),
             "Password" => s.green(),
+            "Other" => s.blue(),
             _ => s.normal(),
         },
-        |s| s.normal(),
-        |s| s.dimmed(),
     ];
 
     let title = format!("Search: '{}' ({} found)", query, matches.len());

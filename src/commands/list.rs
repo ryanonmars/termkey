@@ -39,36 +39,19 @@ fn type_color(s: &str) -> ColoredString {
     }
 }
 
+fn display_name(entry: &EntryMeta) -> String {
+    if entry.has_secondary_password {
+        format!("{} [locked]", entry.name)
+    } else {
+        entry.name.clone()
+    }
+}
+
 fn build_row(i: usize, entry: &EntryMeta) -> Vec<String> {
-    let addr_or_url = if entry.secret_type.is_password_type() {
-        entry
-            .url
-            .as_deref()
-            .map(|s| truncate_display(s, 20))
-            .unwrap_or_else(|| "-".to_string())
-    } else {
-        entry
-            .public_address
-            .as_deref()
-            .map(|s| truncate_display(s, 20))
-            .unwrap_or_else(|| "-".to_string())
-    };
-
-    let network = if entry.network.is_empty() {
-        "-".to_string()
-    } else {
-        entry.network.clone()
-    };
-
-    let username = entry.username.as_deref().unwrap_or("-").to_string();
-
     vec![
         format!("{}", i + 1),
-        entry.name.clone(),
-        network,
+        truncate_display(&display_name(entry), 48),
         type_str(&entry.secret_type),
-        username,
-        addr_or_url,
     ]
 }
 
@@ -76,14 +59,11 @@ fn col_styles() -> Vec<fn(&str) -> ColoredString> {
     vec![
         |s| s.dimmed(),    // #
         |s| s.cyan(),      // NAME
-        |s| s.normal(),    // NETWORK
         |s| type_color(s), // TYPE
-        |s| s.normal(),    // USERNAME
-        |s| s.dimmed(),    // ADDRESS / URL
     ]
 }
 
-const HEADERS: &[&str] = &["#", "NAME", "NETWORK", "TYPE", "USERNAME", "ADDRESS / URL"];
+const HEADERS: &[&str] = &["#", "NAME", "TYPE"];
 
 pub fn run(filter: Option<&str>) -> Result<()> {
     // Validate filter early if provided
