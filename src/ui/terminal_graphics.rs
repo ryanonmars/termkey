@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::time::Duration;
 
 const ICON_PNG_BASE64: &str = include_str!("../../assets/branding/termkey-icon-64.b64");
+const ICON_PNG_NAME_BASE64: &str = "dGVybWtleS1pY29uLnBuZw==";
 const MIN_WIDTH: u16 = 40;
 const KITTY_CHUNK_SIZE: usize = 4096;
 const SPLASH_ICON_CELL_WIDTH: u16 = 24;
@@ -11,6 +12,7 @@ const SPLASH_ICON_CELL_HEIGHT: u16 = 12;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GraphicsProtocol {
     Kitty,
+    Iterm2,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,16 +47,9 @@ fn print_icon_with_layout(
     };
 
     let mut out = io::stdout();
-    for _ in 0..top_padding {
-        if out.write_all(b"\n").is_err() {
-            return false;
-        }
-    }
-
-    let left_pad = term_width.saturating_sub(cell_width) / 2;
-    let pad = " ".repeat(left_pad as usize);
-
-    if out.write_all(pad.as_bytes()).is_err() {
+    let row = top_padding.saturating_add(1);
+    let col = term_width.saturating_sub(cell_width) / 2 + 1;
+    if write!(out, "\x1b[{};{}H", row, col).is_err() {
         return false;
     }
 
@@ -62,16 +57,15 @@ fn print_icon_with_layout(
 
     let result = match protocol {
         GraphicsProtocol::Kitty => print_kitty_image(&mut out, &payload, cell_width, cell_height),
+        GraphicsProtocol::Iterm2 => print_iterm2_image(&mut out, &payload, cell_width, cell_height),
     };
 
     if result.is_err() {
         return false;
     }
 
-    let trailing_breaks = cell_height;
-    for _ in 0..trailing_breaks {
-        let _ = out.write_all(b"\n");
-    }
+    let next_row = row.saturating_add(cell_height);
+    let _ = write!(out, "\x1b[{};1H", next_row);
     let _ = out.flush();
     true
 }
@@ -101,6 +95,7 @@ fn graphics_preference() -> GraphicsPreference {
         "0" | "false" | "off" | "disable" | "disabled" | "none" => GraphicsPreference::Disabled,
         "1" | "true" | "on" | "auto" => GraphicsPreference::Auto,
         "kitty" | "ghostty" => GraphicsPreference::Forced(GraphicsProtocol::Kitty),
+        "iterm" | "iterm2" => GraphicsPreference::Forced(GraphicsProtocol::Iterm2),
         _ => GraphicsPreference::Auto,
     }
 }
@@ -114,9 +109,16 @@ fn auto_detect_protocol() -> Option<GraphicsProtocol> {
         return Some(GraphicsProtocol::Kitty);
     }
 
+    if env::var_os("ITERM_SESSION_ID").is_some() {
+        return Some(GraphicsProtocol::Iterm2);
+    }
+
     let term_program = env::var("TERM_PROGRAM").ok();
     if matches!(term_program.as_deref(), Some("ghostty")) {
         return Some(GraphicsProtocol::Kitty);
+    }
+    if matches!(term_program.as_deref(), Some("iTerm.app")) {
+        return Some(GraphicsProtocol::Iterm2);
     }
 
     let term = env::var("TERM").unwrap_or_default();
@@ -162,4 +164,17 @@ fn print_kitty_image(
     }
 
     Ok(())
+}
+
+fn print_iterm2_image(
+    out: &mut impl Write,
+    payload: &str,
+    cell_width: u16,
+    cell_height: u16,
+) -> io::Result<()> {
+    write!(
+        out,
+        "\x1b]1337;File=name={};inline=1;width={};height={};preserveAspectRatio=1:{}\x07",
+        ICON_PNG_NAME_BASE64, cell_width, cell_height, payload
+    )
 }
