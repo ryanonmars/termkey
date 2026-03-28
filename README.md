@@ -39,7 +39,7 @@ brew install ryanonmars/termkey/termkey
 
 **Direct ZIP download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x86_64.zip)
 
-The macOS installer adds `TermKey.app` to `/Applications` and also installs the `termkey` CLI to `/usr/local/bin`.
+The macOS installer adds `TermKey.app` and `Uninstall TermKey.app` to `/Applications` and also installs the `termkey` CLI to `/usr/local/bin`. To remove the installer-based version later, open `Uninstall TermKey.app` from Applications. Your vault in `~/.termkey` is left untouched.
 
 ```bash
 unzip termkey-macos-*.zip

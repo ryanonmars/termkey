@@ -4,6 +4,7 @@ set -euo pipefail
 
 binary_path="/usr/local/bin/termkey"
 app_path="/Applications/TermKey.app"
+uninstall_app_path="/Applications/Uninstall TermKey.app"
 app_binary_path="$app_path/Contents/Resources/bin/termkey"
 
 if [[ -f "$binary_path" ]]; then
@@ -13,6 +14,10 @@ fi
 
 if [[ -d "$app_path" ]]; then
   xattr -dr com.apple.quarantine "$app_path" 2>/dev/null || true
+fi
+
+if [[ -d "$uninstall_app_path" ]]; then
+  xattr -dr com.apple.quarantine "$uninstall_app_path" 2>/dev/null || true
 fi
 
 if [[ -f "$app_binary_path" ]]; then

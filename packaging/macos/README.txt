@@ -3,15 +3,23 @@ TermKey for macOS
 
 This disk image contains:
 
-- Install TermKey.pkg: installer package for the TermKey CLI
+- Install TermKey.pkg: installer package for the TermKey app, CLI, and uninstaller
 
 Recommended install
 -------------------
 
 1. Open Install TermKey.pkg.
 2. Follow the macOS installer steps.
-3. The installer places termkey at /usr/local/bin/termkey.
-4. Open a new Terminal window and run termkey.
+3. The installer places TermKey.app and Uninstall TermKey.app in /Applications.
+4. It also places termkey at /usr/local/bin/termkey.
+5. Open a new Terminal window and run termkey.
+
+Uninstall
+---------
+
+To remove the installer-based app later, open Uninstall TermKey.app from /Applications.
+It removes the app bundle, the CLI binary, and the installer receipt. Your ~/.termkey
+vault data is left untouched.
 
 Manual install
 --------------
