@@ -9,7 +9,7 @@ Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `
 - **Vault path:** `~/.termkey/`
 - **Secret types:** private keys, seed phrases, passwords
 - **Networks:** Ethereum, Bitcoin, Solana, or a custom network label
-- **Extras:** encrypted backup/import, optional recovery question, address derivation for supported crypto entries
+- **Extras:** encrypted backup/import, optional recovery question, strong password generation for password entries, address derivation for supported crypto entries
 
 ---
 
@@ -102,6 +102,7 @@ After setup, you land on the login screen and then the dashboard.
 Inside the TUI you can:
 
 - Add private keys, seed phrases, or passwords
+- Generate strong passwords while creating password entries
 - Search and filter entries in place
 - View secrets or copy them to the clipboard
 - Edit, rename, and delete entries
@@ -112,6 +113,7 @@ Inside the TUI you can:
 For crypto entries, TermKey supports Ethereum, Bitcoin, Solana, and custom network labels. Public address derivation is available for supported Ethereum, Bitcoin, and Solana private keys and seed phrases.
 
 For password entries, you can also store optional username and URL metadata alongside the secret.
+Both the TUI add form and `termkey add` can generate a strong password for you during entry creation.
 
 ---
 

@@ -2,7 +2,9 @@ use colored::Colorize;
 use dialoguer::{Confirm, Select};
 
 use crate::error::{Result, TermKeyError};
-use crate::ui::borders::print_box;
+use crate::links;
+use crate::ui::borders::{print_box, print_success};
+use crate::vault::model::Entry;
 use crate::vault::model::VaultData;
 use crate::vault::storage;
 
@@ -32,7 +34,12 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
             lines.push(format!("{:<16} {}", "Username:".bold(), uname));
         }
         if let Some(ref url) = entry.url {
-            lines.push(format!("{:<16} {}", "URL:".bold(), url));
+            let rendered_url = if crate::ui::is_interactive() {
+                links::format_terminal_hyperlink(url, url)
+            } else {
+                url.clone()
+            };
+            lines.push(format!("{:<16} {}", "URL:".bold(), rendered_url));
         }
     }
     if !entry.notes.is_empty() {
@@ -53,34 +60,61 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
     println!();
     print_box(Some("Entry Details"), &lines);
 
-    let reveal = Confirm::new()
-        .with_prompt("Reveal secret?")
-        .default(false)
-        .interact()
-        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    if let Some(url) = entry.url.as_deref().filter(|url| links::is_web_url(url)) {
+        loop {
+            let options = &["Reveal secret", "Open URL", "Done"];
+            let choice = Select::new()
+                .with_prompt("What would you like to do?")
+                .items(options)
+                .default(0)
+                .interact()
+                .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
-    if reveal {
-        println!();
-        println!("  {} {}", "Secret:".bold(), entry.secret.red());
-        println!();
-
-        let options = &["Clear screen and continue", "Keep visible"];
-        let clear_choice = Select::new()
-            .with_prompt("What would you like to do?")
-            .items(options)
-            .default(0)
+            match choice {
+                0 => reveal_secret(entry)?,
+                1 => {
+                    links::open_url(url)?;
+                    print_success("Opened URL in your browser.");
+                }
+                _ => break,
+            }
+        }
+    } else {
+        let reveal = Confirm::new()
+            .with_prompt("Reveal secret?")
+            .default(false)
             .interact()
             .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
-        if clear_choice == 0 {
-            use crossterm::{
-                cursor::MoveTo,
-                execute,
-                terminal::{Clear, ClearType},
-            };
-            execute!(std::io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
-                .map_err(TermKeyError::Io)?;
+        if reveal {
+            reveal_secret(entry)?;
         }
+    }
+
+    Ok(())
+}
+
+fn reveal_secret(entry: &Entry) -> Result<()> {
+    println!();
+    println!("  {} {}", "Secret:".bold(), entry.secret.red());
+    println!();
+
+    let options = &["Clear screen and continue", "Keep visible"];
+    let clear_choice = Select::new()
+        .with_prompt("What would you like to do?")
+        .items(options)
+        .default(0)
+        .interact()
+        .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+
+    if clear_choice == 0 {
+        use crossterm::{
+            cursor::MoveTo,
+            execute,
+            terminal::{Clear, ClearType},
+        };
+        execute!(std::io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
+            .map_err(TermKeyError::Io)?;
     }
 
     Ok(())

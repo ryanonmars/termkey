@@ -12,6 +12,7 @@ use crate::vault::model::Entry;
 pub struct ViewEntryScreen {
     pub entry: Entry,
     secret_revealed: bool,
+    status_message: Option<(String, bool)>,
 }
 
 impl ViewEntryScreen {
@@ -19,6 +20,7 @@ impl ViewEntryScreen {
         Self {
             entry,
             secret_revealed: false,
+            status_message: None,
         }
     }
 
@@ -36,8 +38,26 @@ impl ViewEntryScreen {
                     ViewEntryAction::Continue
                 }
             }
+            KeyCode::Char('u') => {
+                if let Some(url) = self.entry.url.clone() {
+                    ViewEntryAction::CopyUrl(url)
+                } else {
+                    ViewEntryAction::Continue
+                }
+            }
+            KeyCode::Char('o') => {
+                if let Some(url) = self.entry.url.clone() {
+                    ViewEntryAction::OpenUrl(url)
+                } else {
+                    ViewEntryAction::Continue
+                }
+            }
             _ => ViewEntryAction::Continue,
         }
+    }
+
+    pub fn set_status(&mut self, message: String, is_error: bool) {
+        self.status_message = Some((message, is_error));
     }
 
     pub fn render(&self, frame: &mut Frame) {
@@ -123,6 +143,18 @@ impl ViewEntryScreen {
         lines.push(Line::from(""));
         lines.push(Line::from(""));
 
+        if let Some((message, is_error)) = &self.status_message {
+            lines.push(Line::from(vec![Span::styled(
+                message.clone(),
+                if *is_error {
+                    Style::default().fg(Color::Red)
+                } else {
+                    Style::default().fg(Color::Green)
+                },
+            )]));
+            lines.push(Line::from(""));
+        }
+
         let secret_display = if self.entry.has_secondary_password && !self.secret_revealed {
             "[Protected - secondary password required]".to_string()
         } else if self.secret_revealed {
@@ -146,8 +178,12 @@ impl ViewEntryScreen {
         lines.push(Line::from(""));
         lines.push(Line::from(""));
 
-        let help_text = if self.secret_revealed {
-            "r: Hide secret │ c: Copy to clipboard │ Esc/q: Close"
+        let help_text = if self.secret_revealed && self.entry.url.is_some() {
+            "r: Hide secret │ c: Copy secret │ u: Copy URL │ o: Open URL │ Esc/q: Close"
+        } else if self.secret_revealed {
+            "r: Hide secret │ c: Copy secret │ Esc/q: Close"
+        } else if self.entry.url.is_some() {
+            "r: Reveal secret │ u: Copy URL │ o: Open URL │ Esc/q: Close"
         } else {
             "r: Reveal secret │ Esc/q: Close"
         };
@@ -176,5 +212,58 @@ fn centered_rect(percent: u16, r: Rect) -> Rect {
 pub enum ViewEntryAction {
     Continue,
     Copy(String),
+    CopyUrl(String),
+    OpenUrl(String),
     Close,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn password_entry_with_url() -> Entry {
+        Entry {
+            name: "Example".to_string(),
+            secret: "secret".to_string(),
+            secret_type: crate::vault::model::SecretType::Password,
+            network: String::new(),
+            public_address: None,
+            username: Some("user".to_string()),
+            url: Some("https://example.com".to_string()),
+            notes: String::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            has_secondary_password: false,
+            entry_key_wrapped: None,
+            entry_key_nonce: None,
+            entry_key_salt: None,
+            encrypted_secret: None,
+            encrypted_secret_nonce: None,
+        }
+    }
+
+    #[test]
+    fn u_key_copies_url_when_present() {
+        let mut screen = ViewEntryScreen::new(password_entry_with_url());
+
+        let action = screen.handle_key(KeyCode::Char('u'), KeyModifiers::NONE);
+
+        match action {
+            ViewEntryAction::CopyUrl(url) => assert_eq!(url, "https://example.com"),
+            _ => panic!("expected CopyUrl action"),
+        }
+    }
+
+    #[test]
+    fn o_key_opens_url_when_present() {
+        let mut screen = ViewEntryScreen::new(password_entry_with_url());
+
+        let action = screen.handle_key(KeyCode::Char('o'), KeyModifiers::NONE);
+
+        match action {
+            ViewEntryAction::OpenUrl(url) => assert_eq!(url, "https://example.com"),
+            _ => panic!("expected OpenUrl action"),
+        }
+    }
 }

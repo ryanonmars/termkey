@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod crypto;
 mod error;
+mod links;
 mod repl;
 mod ui;
 mod vault;

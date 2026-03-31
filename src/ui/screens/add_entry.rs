@@ -11,6 +11,7 @@ use zeroize::Zeroize;
 
 use crate::crypto::derive::derive_address;
 use crate::crypto::entry_key;
+use crate::crypto::passwords;
 use crate::vault::model::{Entry, SecretType};
 
 pub struct AddEntryScreen {
@@ -20,6 +21,7 @@ pub struct AddEntryScreen {
     custom_secret_type: String,
     secret: String,
     secret_confirm: String,
+    generated_password: bool,
     network: String,
     custom_network: String,
     use_custom_network: bool,
@@ -54,6 +56,7 @@ impl AddEntryScreen {
             custom_secret_type: String::new(),
             secret: String::new(),
             secret_confirm: String::new(),
+            generated_password: false,
             network: "Ethereum".to_string(),
             custom_network: String::new(),
             use_custom_network: false,
@@ -119,6 +122,11 @@ impl AddEntryScreen {
                 // Network selector (crypto only)
                 else if self.is_crypto_type() && self.current_field == self.network_field() {
                     self.show_network_select = true;
+                } else if self.has_generate_password_field()
+                    && self.current_field == self.generate_password_field()
+                {
+                    self.generate_password();
+                    self.current_field = (self.current_field + 1) % self.field_count();
                 }
                 // Secondary password toggle
                 else if self.current_field == self.secondary_toggle_field() {
@@ -174,6 +182,9 @@ impl AddEntryScreen {
                 }
                 if !self.secret_type.is_other_type() {
                     self.custom_secret_type.clear();
+                }
+                if !self.is_password_type() {
+                    self.generated_password = false;
                 }
                 self.show_type_select = false;
                 self.current_field += 1;
@@ -241,8 +252,14 @@ impl AddEntryScreen {
             f if self.has_custom_type_field() && f == self.custom_type_field() => {
                 self.custom_secret_type.push(c);
             }
-            f if f == self.secret_field() => self.secret.push(c),
-            f if f == self.confirm_field() => self.secret_confirm.push(c),
+            f if f == self.secret_field() => {
+                self.generated_password = false;
+                self.secret.push(c);
+            }
+            f if f == self.confirm_field() => {
+                self.generated_password = false;
+                self.secret_confirm.push(c);
+            }
             f if self.has_custom_network_field() && f == self.custom_network_field() => {
                 self.custom_network.push(c);
             }
@@ -268,9 +285,11 @@ impl AddEntryScreen {
                 self.custom_secret_type.pop();
             }
             f if f == self.secret_field() => {
+                self.generated_password = false;
                 self.secret.pop();
             }
             f if f == self.confirm_field() => {
+                self.generated_password = false;
                 self.secret_confirm.pop();
             }
             f if self.has_custom_network_field() && f == self.custom_network_field() => {
@@ -307,7 +326,7 @@ impl AddEntryScreen {
             base += 1;
         }
         if self.is_password_type() {
-            base += 2; // username, url
+            base += 3; // generate, username, url
         }
         base += 1; // toggle
         if self.use_secondary_password {
@@ -354,7 +373,7 @@ impl AddEntryScreen {
     }
 
     fn username_field(&self) -> usize {
-        self.confirm_field() + 1
+        self.confirm_field() + 1 + usize::from(self.has_generate_password_field())
     }
 
     fn url_field(&self) -> usize {
@@ -369,9 +388,17 @@ impl AddEntryScreen {
                 idx += 1;
             }
         } else if self.is_password_type() {
-            idx += 2;
+            idx += 3;
         }
         idx
+    }
+
+    fn has_generate_password_field(&self) -> bool {
+        self.is_password_type()
+    }
+
+    fn generate_password_field(&self) -> usize {
+        self.confirm_field() + 1
     }
 
     fn effective_secret_type(&self) -> Option<SecretType> {
@@ -398,6 +425,15 @@ impl AddEntryScreen {
         } else {
             self.network.clone()
         }
+    }
+
+    fn generate_password(&mut self) {
+        self.secret.zeroize();
+        self.secret_confirm.zeroize();
+        let generated = passwords::generate_password();
+        self.secret = generated.clone();
+        self.secret_confirm = generated;
+        self.generated_password = true;
     }
 
     fn try_save(&self) -> AddEntryAction {
@@ -586,6 +622,17 @@ impl AddEntryScreen {
         lines.push(self.render_field(field_idx, "Confirm secret", &secret_confirm_masked, false));
         field_idx += 1;
 
+        if self.is_password_type() {
+            lines.push(Line::from(""));
+            let generate_value = if self.generated_password {
+                "Press Enter to regenerate (24 chars ready)"
+            } else {
+                "Press Enter to generate"
+            };
+            lines.push(self.render_field(field_idx, "Generate password", generate_value, false));
+            field_idx += 1;
+        }
+
         if self.is_crypto_type() {
             // Field 4: Network
             lines.push(Line::from(""));
@@ -658,6 +705,10 @@ impl AddEntryScreen {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Select \u{2502} Tab: Next \u{2502} Esc: Cancel"
         } else if self.is_crypto_type() && self.current_field == self.network_field() {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Select \u{2502} Tab: Next \u{2502} Esc: Cancel"
+        } else if self.has_generate_password_field()
+            && self.current_field == self.generate_password_field()
+        {
+            "\u{2191}\u{2193}: Scroll \u{2502} Enter: Generate \u{2502} Tab: Next \u{2502} Ctrl+S: Save \u{2502} Esc: Cancel"
         } else if self.current_field == self.secondary_toggle_field() {
             "\u{2191}\u{2193}: Scroll \u{2502} Enter: Toggle \u{2502} Tab: Next \u{2502} Ctrl+S: Save \u{2502} Esc: Cancel"
         } else {
@@ -845,5 +896,30 @@ mod tests {
         };
 
         assert_eq!(entry.network, "API");
+    }
+
+    #[test]
+    fn generated_password_populates_both_secret_fields() {
+        let mut screen = AddEntryScreen::new();
+        screen.secret_type = SecretType::Password;
+
+        screen.generate_password();
+
+        assert!(!screen.secret.is_empty());
+        assert_eq!(screen.secret, screen.secret_confirm);
+        assert!(screen.generated_password);
+    }
+
+    #[test]
+    fn editing_generated_password_clears_generated_state() {
+        let mut screen = AddEntryScreen::new();
+        screen.secret_type = SecretType::Password;
+        screen.generate_password();
+        screen.current_field = screen.secret_field();
+
+        screen.insert_char('x');
+
+        assert!(!screen.generated_password);
+        assert_ne!(screen.secret, screen.secret_confirm);
     }
 }

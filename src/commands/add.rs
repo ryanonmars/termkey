@@ -1,10 +1,11 @@
 use chrono::Utc;
 use colored::Colorize;
-use dialoguer::{Input, Select};
+use dialoguer::{Confirm, Input, Select};
 use zeroize::Zeroizing;
 
+use crate::crypto::passwords;
 use crate::error::{Result, TermKeyError};
-use crate::ui::borders::print_success;
+use crate::ui::borders::{print_box, print_success};
 use crate::ui::theme::heading;
 use crate::vault::model::{Entry, SecretType, VaultData};
 use crate::vault::storage;
@@ -68,30 +69,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         }
     };
 
-    // Secret (hidden input)
-    let secret_label = match secret_type {
-        SecretType::Password => "Password",
-        SecretType::Other(_) => "Secret",
-        _ => "Paste your secret",
-    };
-    let secret = Zeroizing::new(
-        rpassword::prompt_password(format!("{} (hidden): ", secret_label))
-            .map_err(TermKeyError::Io)?,
-    );
-
-    if secret.is_empty() {
-        return Err(TermKeyError::Cancelled);
-    }
-
-    let confirm_label = match secret_type {
-        SecretType::Password => "Confirm password",
-        SecretType::Other(_) => "Confirm secret",
-        _ => "Confirm secret",
-    };
-    let confirm = Zeroizing::new(
-        rpassword::prompt_password(format!("{} (hidden): ", confirm_label))
-            .map_err(TermKeyError::Io)?,
-    );
+    let (secret, confirm) = prompt_secret(&secret_type)?;
 
     if *secret != *confirm {
         return Err(TermKeyError::SecretMismatch);
@@ -204,4 +182,75 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     print_success(&format!("Entry '{}' stored successfully.", name.cyan()));
 
     Ok(())
+}
+
+fn prompt_secret(secret_type: &SecretType) -> Result<(Zeroizing<String>, Zeroizing<String>)> {
+    if secret_type.is_password_type() {
+        let method_options = &["Enter manually", "Generate strong password", "Exit"];
+        let method_idx = Select::new()
+            .with_prompt("Password input")
+            .items(method_options)
+            .default(1)
+            .interact()
+            .map_err(|e| TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+
+        match method_idx {
+            0 => {}
+            1 => {
+                let generated = Zeroizing::new(passwords::generate_password());
+                print_box(
+                    Some("Generated Password"),
+                    &[
+                        format!("  {}", generated.yellow()),
+                        "  Save this now. The password will be stored after confirmation."
+                            .to_string(),
+                    ],
+                );
+
+                let use_generated = Confirm::new()
+                    .with_prompt("Use this generated password?")
+                    .default(true)
+                    .interact()
+                    .map_err(|e| {
+                        TermKeyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?;
+
+                if !use_generated {
+                    return Err(TermKeyError::Cancelled);
+                }
+
+                return Ok((
+                    Zeroizing::new(generated.to_string()),
+                    Zeroizing::new(generated.to_string()),
+                ));
+            }
+            _ => return Err(TermKeyError::Cancelled),
+        }
+    }
+
+    let secret_label = match secret_type {
+        SecretType::Password => "Password",
+        SecretType::Other(_) => "Secret",
+        _ => "Paste your secret",
+    };
+    let secret = Zeroizing::new(
+        rpassword::prompt_password(format!("{} (hidden): ", secret_label))
+            .map_err(TermKeyError::Io)?,
+    );
+
+    if secret.is_empty() {
+        return Err(TermKeyError::Cancelled);
+    }
+
+    let confirm_label = match secret_type {
+        SecretType::Password => "Confirm password",
+        SecretType::Other(_) => "Confirm secret",
+        _ => "Confirm secret",
+    };
+    let confirm = Zeroizing::new(
+        rpassword::prompt_password(format!("{} (hidden): ", confirm_label))
+            .map_err(TermKeyError::Io)?,
+    );
+
+    Ok((secret, confirm))
 }

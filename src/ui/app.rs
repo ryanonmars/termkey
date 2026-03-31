@@ -932,6 +932,24 @@ impl App {
                     seconds_left: timeout as u8,
                 };
             }
+            super::screens::view_entry::ViewEntryAction::CopyUrl(url) => {
+                let status = match self.copy_text_to_clipboard(&url) {
+                    Ok(()) => ("URL copied to clipboard.".to_string(), false),
+                    Err(e) => (format!("Failed to copy URL: {}", e), true),
+                };
+                if let AppView::ViewEntry(view_entry) = &mut self.view {
+                    view_entry.set_status(status.0, status.1);
+                }
+            }
+            super::screens::view_entry::ViewEntryAction::OpenUrl(url) => {
+                let status = match crate::links::open_url(&url) {
+                    Ok(()) => ("Opened URL in your browser.".to_string(), false),
+                    Err(e) => (format!("Failed to open URL: {}", e), true),
+                };
+                if let AppView::ViewEntry(view_entry) = &mut self.view {
+                    view_entry.set_status(status.0, status.1);
+                }
+            }
             super::screens::view_entry::ViewEntryAction::Continue => {}
         }
         Ok(())
@@ -1018,6 +1036,17 @@ impl App {
             let _ = clipboard.set_text("");
         }
         Ok(())
+    }
+
+    fn copy_text_to_clipboard(&self, text: &str) -> Result<()> {
+        use arboard::Clipboard;
+
+        let mut clipboard = Clipboard::new().map_err(|e| {
+            TermKeyError::Clipboard(format!("failed to access system clipboard: {}", e))
+        })?;
+        clipboard
+            .set_text(text.to_string())
+            .map_err(|e| TermKeyError::Clipboard(format!("failed to write clipboard: {}", e)))
     }
 
     // ─── Navigation ──────────────────────────────────────────────────
@@ -1165,6 +1194,7 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from("  Shift+A   Add new entry"),
+            Line::from("            Password entries can generate a strong secret in the add form"),
             Line::from("  Shift+V   View selected entry"),
             Line::from("  Shift+C   Copy secret to clipboard"),
             Line::from("  Shift+E   Edit selected entry"),
@@ -1176,6 +1206,8 @@ impl App {
             Line::from("  Shift+S   Settings"),
             Line::from("  ?         Show this help"),
             Line::from("  Shift+Q   Quit application"),
+            Line::from(""),
+            Line::from("  Entry View: r reveal, c copy secret, u copy URL, o open URL"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Global Shortcuts:",

@@ -6,8 +6,46 @@ use super::{get_terminal_width, is_interactive};
 
 /// Measure the display width of a string, ignoring ANSI escape codes.
 fn display_width(s: &str) -> usize {
-    let stripped = console::strip_ansi_codes(s);
-    UnicodeWidthStr::width(stripped.as_ref())
+    let stripped = strip_terminal_formatting(s);
+    UnicodeWidthStr::width(stripped.as_str())
+}
+
+fn strip_terminal_formatting(s: &str) -> String {
+    let ansi_stripped = console::strip_ansi_codes(s);
+    strip_osc_hyperlinks(ansi_stripped.as_ref())
+}
+
+fn strip_osc_hyperlinks(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b']' {
+            i += 2;
+            while i < bytes.len() {
+                if bytes[i] == 0x07 {
+                    i += 1;
+                    break;
+                }
+                if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+
+        if let Some(ch) = s[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    out
 }
 
 /// Pad a (possibly colored) string to exactly `target` display columns.
