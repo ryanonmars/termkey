@@ -34,46 +34,30 @@ document.body.innerHTML = `
 
     .popup {
       display: grid;
-      gap: 14px;
-      padding: 18px;
+      gap: 12px;
+      padding: 14px;
     }
 
     .header {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
     }
 
     .eyebrow {
-      margin: 0 0 4px;
-      color: #7dd3fc;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .title {
       margin: 0;
-      font-size: 22px;
+      color: #7dd3fc;
+      font-size: 13px;
       font-weight: 600;
       letter-spacing: -0.03em;
-    }
-
-    .subtitle {
-      margin: 6px 0 0;
-      color: #93a4b8;
-      font-size: 13px;
-      line-height: 1.4;
     }
 
     .connection {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      margin-top: 4px;
-      padding: 8px 10px;
+      padding: 6px 9px;
       border: 1px solid rgba(148, 163, 184, 0.14);
       border-radius: 999px;
       background: rgba(15, 23, 42, 0.72);
@@ -97,7 +81,7 @@ document.body.innerHTML = `
     }
 
     .panel {
-      padding: 14px;
+      padding: 12px;
       border: 1px solid rgba(148, 163, 184, 0.14);
       border-radius: 16px;
       background: rgba(15, 23, 42, 0.74);
@@ -117,7 +101,7 @@ document.body.innerHTML = `
 
     .site-label {
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       color: #7dd3fc;
       font-size: 11px;
       font-weight: 600;
@@ -127,18 +111,105 @@ document.body.innerHTML = `
 
     .site-hostname {
       display: block;
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 600;
-      line-height: 1.2;
+      line-height: 1.3;
       word-break: break-word;
     }
 
     .site-summary {
       display: block;
-      margin-top: 5px;
+      margin-top: 3px;
       color: #93a4b8;
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.4;
+    }
+
+    .match-picker {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .match-picker[hidden] {
+      display: none;
+    }
+
+    .match-picker-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .match-list-label {
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .match-list-summary {
+      color: #93a4b8;
+      font-size: 12px;
+    }
+
+    .match-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .match-option {
+      display: grid;
+      gap: 8px;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 14px;
+      background: rgba(2, 6, 23, 0.52);
+      color: #f8fafc;
+      text-align: left;
+      transition:
+        border-color 140ms ease,
+        background 140ms ease,
+        transform 140ms ease;
+    }
+
+    .match-option:hover {
+      transform: translateY(-1px);
+      border-color: rgba(125, 211, 252, 0.4);
+      background: rgba(15, 23, 42, 0.82);
+    }
+
+    .match-option-main {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .match-option-name {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    .match-option-detail {
+      display: block;
+      margin-top: 4px;
+      color: #93a4b8;
+      font-size: 12px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .match-option-side {
+      display: grid;
+      justify-items: end;
+      flex-shrink: 0;
     }
 
     .fill-button,
@@ -155,6 +226,12 @@ document.body.innerHTML = `
     .fill-button {
       min-width: 76px;
       padding: 10px 14px;
+    }
+
+    .match-fill-button {
+      min-width: 92px;
+      padding: 8px 12px;
+      font-size: 12px;
     }
 
     .unlock-button {
@@ -235,8 +312,6 @@ document.body.innerHTML = `
     <header class="header">
       <div>
         <p class="eyebrow">TermKey</p>
-        <h1 class="title">Current site</h1>
-        <p class="subtitle">Autofill is checked automatically when the popup opens.</p>
       </div>
       <div class="connection">
         <span id="backend-dot" class="status-dot" aria-hidden="true"></span>
@@ -247,11 +322,23 @@ document.body.innerHTML = `
     <section id="site-panel" class="panel">
       <div class="site-row">
         <div>
-          <span class="site-label">Detected site</span>
+          <span class="site-label">Site</span>
           <strong id="site-hostname" class="site-hostname">Waiting for page...</strong>
           <span id="site-summary" class="site-summary">Checking the current tab.</span>
         </div>
         <button id="fill-best-match" class="fill-button" disabled>Fill</button>
+      </div>
+      <div id="match-picker" class="match-picker" hidden>
+        <div class="match-picker-header">
+          <span class="match-list-label">Saved logins</span>
+          <span id="match-list-summary" class="match-list-summary"></span>
+        </div>
+        <div
+          id="match-list"
+          class="match-list"
+          role="listbox"
+          aria-label="Saved logins for the current site"
+        ></div>
       </div>
     </section>
 
@@ -291,6 +378,10 @@ const siteHostnameEl =
   document.querySelector<HTMLSpanElement>("#site-hostname");
 const siteSummaryEl =
   document.querySelector<HTMLSpanElement>("#site-summary");
+const matchPickerEl = document.querySelector<HTMLElement>("#match-picker");
+const matchListSummaryEl =
+  document.querySelector<HTMLSpanElement>("#match-list-summary");
+const matchListEl = document.querySelector<HTMLElement>("#match-list");
 
 if (
   !backendDotEl ||
@@ -302,7 +393,10 @@ if (
   !passwordInput ||
   !statusEl ||
   !siteHostnameEl ||
-  !siteSummaryEl
+  !siteSummaryEl ||
+  !matchPickerEl ||
+  !matchListSummaryEl ||
+  !matchListEl
 ) {
   throw new Error("Popup UI failed to initialize.");
 }
@@ -319,8 +413,12 @@ const masterPasswordInput = passwordInput;
 const statusMessage = statusEl;
 const siteHostname = siteHostnameEl;
 const siteSummary = siteSummaryEl;
+const matchPicker = matchPickerEl;
+const matchListSummary = matchListSummaryEl;
+const matchList = matchListEl;
 
 let currentSiteMatches: NativeHostSiteMatch[] = [];
+let fillingEntryId: string | null = null;
 let backendConnected = false;
 let vaultLocked = true;
 let hasSupportedPage = true;
@@ -333,7 +431,7 @@ function setSiteVisibility(visible: boolean) {
   hasSupportedPage = visible;
   sitePanel.hidden = !visible;
   if (!visible) {
-    currentSiteMatches = [];
+    setCurrentSiteMatches([]);
   }
   updateFillButtonState();
 }
@@ -395,15 +493,20 @@ function renderSite(hostnameText: string, summaryText: string) {
 }
 
 function updateFillButtonState() {
+  const singleMatch = currentSiteMatches.length === 1;
+
+  fillButton.hidden = !singleMatch;
   fillButton.disabled =
     !hasSupportedPage ||
     !backendConnected ||
     vaultLocked ||
-    currentSiteMatches.length === 0;
+    !singleMatch ||
+    fillingEntryId !== null;
+  fillButton.textContent = fillingEntryId !== null ? "Filling..." : "Fill";
 }
 
 function resetMatches(summaryText: string) {
-  currentSiteMatches = [];
+  setCurrentSiteMatches([]);
   renderSite(siteDetails.hostname, summaryText);
   updateFillButtonState();
 }
@@ -419,15 +522,133 @@ function describeMatches(matches: NativeHostSiteMatch[]) {
     return "No saved login found for this site.";
   }
 
-  const bestMatch = matches[0];
-  const details = [bestMatch.name];
+  if (matches.length === 1) {
+    const match = matches[0];
+    const details = [match.name];
 
-  if (bestMatch.username) {
-    details.push(bestMatch.username);
+    if (match.username) {
+      details.push(match.username);
+    }
+
+    return details.join(" • ");
   }
 
-  const suffix = matches.length > 1 ? ` • ${matches.length} matches` : "";
-  return `Best match: ${details.join(" • ")}${suffix}`;
+  return `${matches.length} saved logins found. Choose one to fill.`;
+}
+
+function formatMatchDetail(match: NativeHostSiteMatch) {
+  if (match.username) {
+    return match.username;
+  }
+
+  if (match.url) {
+    return match.url;
+  }
+
+  return "No username saved";
+}
+
+function renderMatchPicker() {
+  const multipleMatches = currentSiteMatches.length > 1;
+  matchPicker.hidden = !multipleMatches;
+  matchList.replaceChildren();
+
+  if (!multipleMatches) {
+    matchListSummary.textContent = "";
+    return;
+  }
+
+  matchListSummary.textContent = `${currentSiteMatches.length} matches`;
+
+  const fragment = document.createDocumentFragment();
+
+  currentSiteMatches.forEach((match) => {
+    const option = document.createElement("div");
+    option.className = "match-option";
+
+    const main = document.createElement("span");
+    main.className = "match-option-main";
+
+    const content = document.createElement("span");
+
+    const name = document.createElement("span");
+    name.className = "match-option-name";
+    name.textContent = match.name;
+
+    const detail = document.createElement("span");
+    detail.className = "match-option-detail";
+    detail.textContent = formatMatchDetail(match);
+
+    const side = document.createElement("span");
+    side.className = "match-option-side";
+
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.className = "fill-button match-fill-button";
+    actionButton.disabled =
+      !backendConnected || vaultLocked || fillingEntryId !== null;
+    actionButton.textContent =
+      fillingEntryId === match.id ? "Filling..." : "Fill";
+
+    content.append(name, detail);
+    side.append(actionButton);
+    main.append(content, side);
+    option.append(main);
+
+    actionButton.addEventListener("click", () => {
+      fillMatch(match);
+    });
+
+    fragment.append(option);
+  });
+
+  matchList.append(fragment);
+}
+
+function setCurrentSiteMatches(matches: NativeHostSiteMatch[]) {
+  currentSiteMatches = matches;
+  renderMatchPicker();
+  updateFillButtonState();
+}
+
+function fillMatch(match: NativeHostSiteMatch) {
+  if (!backendConnected || vaultLocked) {
+    renderMessage("Unlock the vault and reconnect the backend before autofill.", "error");
+    return;
+  }
+
+  fillingEntryId = match.id;
+  renderMatchPicker();
+  updateFillButtonState();
+  renderMessage(`Filling ${match.name} into the current page...`);
+
+  sendMessage(
+    {
+      type: "termkey.autofill.fillSelectedMatch",
+      entryId: match.id,
+    },
+    (response) => {
+      fillingEntryId = null;
+      renderMatchPicker();
+      updateFillButtonState();
+
+      if (!response.ok) {
+        renderMessage(`Autofill failed: ${response.error}`, "error");
+        return;
+      }
+
+      if (response.response.type !== "fill_result") {
+        renderMessage(
+          "Background returned the wrong response type for autofill.",
+          "error"
+        );
+        return;
+      }
+
+      const result: PopupFillResultResponse = response.response;
+      renderMessage(formatFillResultMessage(result), "success");
+    }
+  );
 }
 
 function formatFillResultMessage(result: PopupFillResultResponse) {
@@ -472,8 +693,7 @@ function sendMessage(
 }
 
 function handleSiteMatchFailure(error: string) {
-  currentSiteMatches = [];
-  updateFillButtonState();
+  setCurrentSiteMatches([]);
 
   if (error === "Current tab is not a supported web page.") {
     setSiteVisibility(false);
@@ -488,8 +708,7 @@ function handleSiteMatchFailure(error: string) {
 
 function findSiteMatches() {
   if (!hasSupportedPage) {
-    currentSiteMatches = [];
-    updateFillButtonState();
+    setCurrentSiteMatches([]);
     return;
   }
 
@@ -512,20 +731,27 @@ function findSiteMatches() {
       return;
     }
 
-    currentSiteMatches = response.response.matches;
+    setCurrentSiteMatches(response.response.matches);
     setSiteVisibility(true);
     renderSite(
       response.response.siteHostname,
       describeMatches(response.response.matches)
     );
-    updateFillButtonState();
 
     if (response.response.matches.length === 0) {
       renderMessage(`No saved login found for ${response.response.siteHostname}.`);
       return;
     }
 
-    renderMessage(`Ready to fill ${response.response.matches[0].name}.`, "success");
+    if (response.response.matches.length === 1) {
+      renderMessage(
+        `Ready to fill ${response.response.matches[0].name}.`,
+        "success"
+      );
+      return;
+    }
+
+    renderMessage("Use Fill on the saved login you want for this site.");
   });
 }
 
@@ -608,42 +834,13 @@ function unlockVault() {
 }
 
 fillButton.addEventListener("click", () => {
-  const bestMatch = currentSiteMatches[0];
-  if (!bestMatch) {
+  const singleMatch = currentSiteMatches[0];
+  if (!singleMatch) {
     renderMessage("No current-site match is available to fill.", "error");
     return;
   }
 
-  fillButton.disabled = true;
-  fillButton.textContent = "Filling...";
-  renderMessage(`Filling ${bestMatch.name} into the current page...`);
-
-  sendMessage(
-    {
-      type: "termkey.autofill.fillBestMatch",
-      entryId: bestMatch.id,
-    },
-    (response) => {
-      fillButton.textContent = "Fill";
-      updateFillButtonState();
-
-      if (!response.ok) {
-        renderMessage(`Autofill failed: ${response.error}`, "error");
-        return;
-      }
-
-      if (response.response.type !== "fill_result") {
-        renderMessage(
-          "Background returned the wrong response type for autofill.",
-          "error"
-        );
-        return;
-      }
-
-      const result: PopupFillResultResponse = response.response;
-      renderMessage(formatFillResultMessage(result), "success");
-    }
-  );
+  fillMatch(singleMatch);
 });
 
 unlockVaultButton.addEventListener("click", unlockVault);

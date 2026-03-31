@@ -111,7 +111,7 @@ export type PopupToBackgroundMessage =
       type: "termkey.nativeHost.findSiteMatches";
     }
   | {
-      type: "termkey.autofill.fillBestMatch";
+      type: "termkey.autofill.fillSelectedMatch";
       entryId: string;
     }
   | {

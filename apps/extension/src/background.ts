@@ -208,7 +208,7 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    if (message?.type === "termkey.autofill.fillBestMatch") {
+    if (message?.type === "termkey.autofill.fillSelectedMatch") {
       void getCurrentTabId()
         .then((tabId) =>
           enqueueNativeHostRequest({

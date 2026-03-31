@@ -8,6 +8,10 @@ type FillCredentialsMessage = {
   };
 };
 
+type ContentScriptProbeMessage = {
+  type: "termkey.contentScriptProbe";
+};
+
 function isVisibleInput(input: HTMLInputElement) {
   const rect = input.getBoundingClientRect();
   const style = window.getComputedStyle(input);
@@ -132,60 +136,78 @@ function findStandaloneUsernameInput() {
   return usernameCandidates[0]?.input;
 }
 
+function fillCredentials(message: FillCredentialsMessage) {
+  let filledFields = 0;
+  let filledUsername = false;
+  let filledPassword = false;
+
+  const passwordInput = findPasswordInput();
+  const usernameInput = passwordInput
+    ? findUsernameInput(passwordInput)
+    : findStandaloneUsernameInput();
+
+  if (message.entry.username && usernameInput) {
+    setInputValue(usernameInput, message.entry.username);
+    filledFields += 1;
+    filledUsername = true;
+  }
+
+  if (passwordInput) {
+    setInputValue(passwordInput, message.entry.password);
+    filledFields += 1;
+    filledPassword = true;
+  }
+
+  if (filledFields === 0) {
+    if (message.entry.username) {
+      return {
+        ok: false,
+        error: "No visible username or password field was found on this page.",
+      };
+    }
+
+    return {
+      ok: false,
+      error: "No visible password field was found on this page.",
+    };
+  }
+
+  return {
+    ok: true,
+    filledFields,
+    filledUsername,
+    filledPassword,
+  };
+}
+
 chrome.runtime.onMessage.addListener(
   (
-    message: FillCredentialsMessage,
+    message: FillCredentialsMessage | ContentScriptProbeMessage,
     _sender: unknown,
     sendResponse: (response: unknown) => void
   ) => {
+    if (message?.type === "termkey.contentScriptProbe") {
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (message?.type !== "termkey.fillCredentials") {
       return false;
     }
 
-    let filledFields = 0;
-    let filledUsername = false;
-    let filledPassword = false;
-
-    const passwordInput = findPasswordInput();
-    const usernameInput = passwordInput
-      ? findUsernameInput(passwordInput)
-      : findStandaloneUsernameInput();
-
-    if (message.entry.username && usernameInput) {
-      setInputValue(usernameInput, message.entry.username);
-      filledFields += 1;
-      filledUsername = true;
-    }
-
-    if (passwordInput) {
-      setInputValue(passwordInput, message.entry.password);
-      filledFields += 1;
-      filledPassword = true;
-    }
-
-    if (filledFields === 0) {
-      if (message.entry.username) {
-        sendResponse({
-          ok: false,
-          error: "No visible username or password field was found on this page.",
-        });
-        return false;
-      }
-
+    try {
+      sendResponse(fillCredentials(message));
+    } catch (error) {
       sendResponse({
         ok: false,
-        error: "No visible password field was found on this page.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Content script failed while filling the page.",
       });
-      return false;
     }
 
-    sendResponse({
-      ok: true,
-      filledFields,
-      filledUsername,
-      filledPassword,
-    });
-    return false;
+    return true;
   }
 );
 
