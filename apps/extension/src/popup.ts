@@ -430,6 +430,22 @@ function describeMatches(matches: NativeHostSiteMatch[]) {
   return `Best match: ${details.join(" • ")}${suffix}`;
 }
 
+function formatFillResultMessage(result: PopupFillResultResponse) {
+  if (result.filledUsername && result.filledPassword) {
+    return `Filled ${result.entryName}. Username and password updated.`;
+  }
+
+  if (result.filledUsername) {
+    return `Filled username for ${result.entryName}. Password field is not visible yet.`;
+  }
+
+  if (result.filledPassword) {
+    return `Filled password for ${result.entryName}.`;
+  }
+
+  return `Filled ${result.entryName}. ${result.filledFields} fields updated.`;
+}
+
 function sendMessage(
   message: PopupToBackgroundMessage,
   onSuccess: (response: PopupToBackgroundResponse) => void
@@ -625,10 +641,7 @@ fillButton.addEventListener("click", () => {
       }
 
       const result: PopupFillResultResponse = response.response;
-      renderMessage(
-        `Filled ${result.entryName}. ${result.filledFields} fields updated.`,
-        "success"
-      );
+      renderMessage(formatFillResultMessage(result), "success");
     }
   );
 });

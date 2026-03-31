@@ -69,6 +69,8 @@ export type PopupFillResultResponse = {
   type: "fill_result";
   entryName: string;
   filledFields: number;
+  filledUsername: boolean;
+  filledPassword: boolean;
 };
 
 export type NativeHostResponse =

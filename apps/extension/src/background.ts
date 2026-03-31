@@ -15,6 +15,53 @@ let currentNativeResponseHandler:
   | undefined;
 let nativeRequestQueue: Promise<void> = Promise.resolve();
 
+function isMissingContentScriptError(message: string | undefined) {
+  if (!message) {
+    return false;
+  }
+
+  return (
+    message.includes("Receiving end does not exist") ||
+    message.includes("Could not establish connection")
+  );
+}
+
+function sendMessageToTab<TResponse>(
+  tabId: number,
+  message: unknown
+): Promise<TResponse> {
+  return new Promise<TResponse>((resolve, reject) => {
+    chrome.tabs.sendMessage(tabId, message, (response: TResponse | undefined) => {
+      const runtimeError = chrome.runtime.lastError;
+      if (runtimeError) {
+        reject(new Error(runtimeError.message));
+        return;
+      }
+
+      resolve(response as TResponse);
+    });
+  });
+}
+
+async function ensureContentScript(tabId: number) {
+  try {
+    await sendMessageToTab(tabId, { type: "termkey.contentScriptProbe" });
+    return;
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !isMissingContentScriptError(error.message)
+    ) {
+      throw error;
+    }
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["dist/content.js"],
+  });
+}
+
 async function getCurrentTabUrl(): Promise<string> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url;
@@ -190,19 +237,14 @@ chrome.runtime.onMessage.addListener(
 
           const autofillEntry = response.response.entry;
 
-          chrome.tabs.sendMessage(
-            tabId,
-            {
-              type: "termkey.fillCredentials",
-              entry: autofillEntry,
-            },
-            (fillResponse: any) => {
-              const runtimeError = chrome.runtime.lastError;
-              if (runtimeError) {
-                sendResponse({ ok: false, error: runtimeError.message });
-                return;
-              }
-
+          void ensureContentScript(tabId)
+            .then(() =>
+              sendMessageToTab<any>(tabId, {
+                type: "termkey.fillCredentials",
+                entry: autofillEntry,
+              })
+            )
+            .then((fillResponse) => {
               if (!fillResponse?.ok) {
                 sendResponse({
                   ok: false,
@@ -219,10 +261,14 @@ chrome.runtime.onMessage.addListener(
                   type: "fill_result",
                   entryName: autofillEntry.name,
                   filledFields: fillResponse.filledFields ?? 0,
+                  filledUsername: fillResponse.filledUsername === true,
+                  filledPassword: fillResponse.filledPassword === true,
                 },
               });
-            }
-          );
+            })
+            .catch((error: Error) => {
+              sendResponse({ ok: false, error: error.message });
+            });
         })
         .catch((error: Error) => {
           sendResponse({ ok: false, error: error.message });
