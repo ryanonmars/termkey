@@ -214,6 +214,8 @@ chrome.runtime.onMessage.addListener(
           enqueueNativeHostRequest({
             type: "get_autofill_entry",
             id: message.entryId,
+            password: message.password,
+            secondaryPassword: message.secondaryPassword,
           }).then(
             (response): {
               response: PopupToBackgroundResponse;

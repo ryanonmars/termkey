@@ -12,22 +12,57 @@ type ContentScriptProbeMessage = {
   type: "termkey.contentScriptProbe";
 };
 
+type FillAttemptResult = {
+  filledFields: number;
+  filledUsername: boolean;
+  filledPassword: boolean;
+};
+
+const FILL_RETRY_DELAYS_MS = [0, 150, 350, 700] as const;
+
+function sleep(delayMs: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
+}
+
+function getInputType(input: HTMLInputElement) {
+  return (input.getAttribute("type") ?? "text").toLowerCase();
+}
+
 function isVisibleInput(input: HTMLInputElement) {
   const rect = input.getBoundingClientRect();
   const style = window.getComputedStyle(input);
+
+  if (getInputType(input) === "hidden") {
+    return false;
+  }
+
   return (
     rect.width > 0 &&
     rect.height > 0 &&
     style.visibility !== "hidden" &&
     style.display !== "none" &&
+    style.opacity !== "0" &&
+    style.pointerEvents !== "none" &&
     !input.disabled &&
-    !input.readOnly
+    !input.readOnly &&
+    !input.closest("[aria-hidden='true']")
   );
 }
 
 function setInputValue(input: HTMLInputElement, value: string) {
   input.focus();
-  input.value = value;
+
+  const prototype = Object.getPrototypeOf(input) as HTMLInputElement;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+
+  if (descriptor?.set) {
+    descriptor.set.call(input, value);
+  } else {
+    input.value = value;
+  }
+
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -36,94 +71,246 @@ function getInputText(input: HTMLInputElement, attribute: string) {
   return (input.getAttribute(attribute) ?? "").toLowerCase();
 }
 
-function isUsernameCompatibleInput(input: HTMLInputElement) {
-  const type = (input.getAttribute("type") ?? "text").toLowerCase();
-  return (
-    type === "text" ||
-    type === "email" ||
-    type === "search" ||
-    input.autocomplete === "username"
-  );
+function getAutocompleteTokens(input: HTMLInputElement) {
+  return input.autocomplete
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
-function getUsernameCandidateScore(input: HTMLInputElement) {
-  if (!isVisibleInput(input) || !isUsernameCompatibleInput(input)) {
-    return Number.NEGATIVE_INFINITY;
+function collectInputElements() {
+  const seen = new Set<HTMLInputElement>();
+
+  function visit(root: ParentNode) {
+    if (!("querySelectorAll" in root)) {
+      return;
+    }
+
+    root.querySelectorAll<HTMLInputElement>("input").forEach((input) => {
+      seen.add(input);
+    });
+
+    root.querySelectorAll<HTMLElement>("*").forEach((element) => {
+      if (element.shadowRoot) {
+        visit(element.shadowRoot);
+      }
+    });
   }
 
-  const type = (input.getAttribute("type") ?? "text").toLowerCase();
-  const autocomplete = input.autocomplete.toLowerCase();
-  const descriptor = [
+  visit(document);
+  return Array.from(seen);
+}
+
+function getInputLabelText(input: HTMLInputElement) {
+  const labels = new Set<string>();
+
+  input.labels?.forEach((label) => {
+    labels.add(label.textContent ?? "");
+  });
+
+  const wrappingLabel = input.closest("label");
+  if (wrappingLabel) {
+    labels.add(wrappingLabel.textContent ?? "");
+  }
+
+  return Array.from(labels).join(" ").toLowerCase();
+}
+
+function getInputDescriptor(input: HTMLInputElement) {
+  const form = input.form;
+
+  return [
     input.name,
     input.id,
     input.placeholder,
+    input.autocomplete,
     getInputText(input, "aria-label"),
     getInputText(input, "data-testid"),
+    getInputText(input, "data-qa"),
+    getInputText(input, "data-test"),
+    getInputLabelText(input),
+    form?.getAttribute("aria-label") ?? "",
+    form?.getAttribute("name") ?? "",
+    form?.getAttribute("id") ?? "",
   ]
     .join(" ")
     .toLowerCase();
+}
 
+function getCandidateRoot(element: HTMLElement | null | undefined) {
+  return (
+    element?.closest("form, [role='dialog'], dialog, [role='form'], main, section, article") ??
+    null
+  );
+}
+
+function getContextBoost(input: HTMLInputElement) {
   let score = 0;
+  const activeElement = document.activeElement;
 
-  if (autocomplete === "username") {
-    score += 8;
+  if (activeElement === input) {
+    score += 10;
   }
 
-  if (type === "email") {
+  if (!(activeElement instanceof HTMLElement)) {
+    return score;
+  }
+
+  const activeRoot = getCandidateRoot(activeElement);
+  if (activeRoot?.contains(input)) {
     score += 6;
   }
 
-  if (
-    /user|email|login|identifier|account|member|customer/.test(descriptor)
-  ) {
-    score += 4;
-  }
-
-  if (/search|coupon|promo|filter/.test(descriptor)) {
-    score -= 6;
-  }
-
-  if (type === "search") {
-    score -= 4;
+  if (input.form && activeElement instanceof HTMLElement && input.form.contains(activeElement)) {
+    score += 6;
   }
 
   return score;
 }
 
-function findPasswordInput(): HTMLInputElement | undefined {
-  return Array.from(
-    document.querySelectorAll<HTMLInputElement>("input[type='password']")
-  ).find((input) => isVisibleInput(input));
+function isUsernameCompatibleInput(input: HTMLInputElement) {
+  const type = getInputType(input);
+  const autocompleteTokens = getAutocompleteTokens(input);
+
+  return (
+    type === "text" ||
+    type === "email" ||
+    type === "tel" ||
+    type === "search" ||
+    autocompleteTokens.includes("username") ||
+    autocompleteTokens.includes("email")
+  );
 }
 
-function findUsernameInput(passwordInput: HTMLInputElement) {
-  const searchRoot: ParentNode = passwordInput.form ?? document;
-  const inputs = Array.from(
-    searchRoot.querySelectorAll<HTMLInputElement>("input")
-  );
-  const passwordIndex = inputs.indexOf(passwordInput);
+function getUsernameCandidateScore(
+  input: HTMLInputElement,
+  passwordInput: HTMLInputElement | undefined
+) {
+  if (!isVisibleInput(input) || !isUsernameCompatibleInput(input)) {
+    return Number.NEGATIVE_INFINITY;
+  }
 
-  for (let index = passwordIndex - 1; index >= 0; index -= 1) {
-    const input = inputs[index];
-    if (!isVisibleInput(input)) {
-      continue;
+  const type = getInputType(input);
+  const autocompleteTokens = getAutocompleteTokens(input);
+  const descriptor = getInputDescriptor(input);
+
+  let score = 0;
+
+  if (autocompleteTokens.includes("username")) {
+    score += 14;
+  }
+
+  if (autocompleteTokens.includes("email")) {
+    score += 10;
+  }
+
+  if (type === "email") {
+    score += 8;
+  }
+
+  if (type === "tel") {
+    score += 5;
+  }
+
+  if (
+    /user|email|login|identifier|account|member|customer|phone|mobile/.test(
+      descriptor
+    )
+  ) {
+    score += 6;
+  }
+
+  if (/search|coupon|promo|filter|captcha/.test(descriptor)) {
+    score -= 8;
+  }
+
+  if (/otp|code|2fa|pass|password|pin/.test(descriptor)) {
+    score -= 12;
+  }
+
+  if (type === "search") {
+    score -= 6;
+  }
+
+  if (passwordInput) {
+    if (passwordInput.form && input.form === passwordInput.form) {
+      score += 10;
     }
 
-    if (isUsernameCompatibleInput(input)) {
-      return input;
+    const passwordRoot = getCandidateRoot(passwordInput);
+    if (passwordRoot?.contains(input)) {
+      score += 6;
+    }
+
+    if (input.compareDocumentPosition(passwordInput) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      score += 4;
     }
   }
 
-  return undefined;
+  return score + getContextBoost(input);
 }
 
-function findStandaloneUsernameInput() {
-  const usernameCandidates = Array.from(
-    document.querySelectorAll<HTMLInputElement>("input")
-  )
+function getPasswordCandidateScore(input: HTMLInputElement) {
+  if (!isVisibleInput(input) || getInputType(input) !== "password") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const autocompleteTokens = getAutocompleteTokens(input);
+  const descriptor = getInputDescriptor(input);
+  let score = 0;
+
+  if (autocompleteTokens.includes("current-password")) {
+    score += 18;
+  }
+
+  if (autocompleteTokens.includes("password")) {
+    score += 8;
+  }
+
+  if (autocompleteTokens.includes("new-password")) {
+    score -= 14;
+  }
+
+  if (/pass|password|passcode|pwd|secret/.test(descriptor)) {
+    score += 4;
+  }
+
+  if (/confirm|confirmation|repeat|verify|re-enter/.test(descriptor)) {
+    score -= 14;
+  }
+
+  if (/otp|one.?time|2fa|code|search|coupon|promo/.test(descriptor)) {
+    score -= 12;
+  }
+
+  return score + getContextBoost(input);
+}
+
+function findBestPasswordInput(inputs: HTMLInputElement[]) {
+  const passwordCandidates = inputs
     .map((input) => ({
       input,
-      score: getUsernameCandidateScore(input),
+      score: getPasswordCandidateScore(input),
+    }))
+    .filter(
+      (
+        candidate
+      ): candidate is { input: HTMLInputElement; score: number } =>
+        Number.isFinite(candidate.score)
+    )
+    .sort((left, right) => right.score - left.score);
+
+  return passwordCandidates[0]?.input;
+}
+
+function findBestUsernameInput(
+  inputs: HTMLInputElement[],
+  passwordInput: HTMLInputElement | undefined
+) {
+  const usernameCandidates = inputs
+    .map((input) => ({
+      input,
+      score: getUsernameCandidateScore(input, passwordInput),
     }))
     .filter(
       (
@@ -136,28 +323,54 @@ function findStandaloneUsernameInput() {
   return usernameCandidates[0]?.input;
 }
 
-function fillCredentials(message: FillCredentialsMessage) {
-  let filledFields = 0;
+function fillVisibleCredentials(
+  message: FillCredentialsMessage
+): FillAttemptResult {
+  const inputs = collectInputElements();
+  const passwordInput = findBestPasswordInput(inputs);
+  const usernameInput = message.entry.username
+    ? findBestUsernameInput(inputs, passwordInput)
+    : undefined;
+
   let filledUsername = false;
   let filledPassword = false;
 
-  const passwordInput = findPasswordInput();
-  const usernameInput = passwordInput
-    ? findUsernameInput(passwordInput)
-    : findStandaloneUsernameInput();
-
   if (message.entry.username && usernameInput) {
     setInputValue(usernameInput, message.entry.username);
-    filledFields += 1;
     filledUsername = true;
   }
 
   if (passwordInput) {
     setInputValue(passwordInput, message.entry.password);
-    filledFields += 1;
     filledPassword = true;
   }
 
+  return {
+    filledFields: Number(filledUsername) + Number(filledPassword),
+    filledUsername,
+    filledPassword,
+  };
+}
+
+async function fillCredentials(message: FillCredentialsMessage) {
+  let filledUsername = false;
+  let filledPassword = false;
+
+  for (const delayMs of FILL_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+
+    const attempt = fillVisibleCredentials(message);
+    filledUsername ||= attempt.filledUsername;
+    filledPassword ||= attempt.filledPassword;
+
+    if (filledPassword) {
+      break;
+    }
+  }
+
+  const filledFields = Number(filledUsername) + Number(filledPassword);
   if (filledFields === 0) {
     if (message.entry.username) {
       return {
@@ -195,17 +408,17 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    try {
-      sendResponse(fillCredentials(message));
-    } catch (error) {
-      sendResponse({
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Content script failed while filling the page.",
+    void fillCredentials(message)
+      .then(sendResponse)
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Content script failed while filling the page.",
+        });
       });
-    }
 
     return true;
   }

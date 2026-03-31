@@ -264,6 +264,15 @@ document.body.innerHTML = `
       gap: 10px;
     }
 
+    .password-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .secondary-password-group[hidden] {
+      display: none;
+    }
+
     .password-input {
       width: 100%;
       padding: 11px 12px;
@@ -344,19 +353,30 @@ document.body.innerHTML = `
 
     <section id="unlock-section" class="panel">
       <label>
-        <span class="unlock-label">Master password</span>
+        <span id="password-panel-label" class="unlock-label">Master password</span>
         <div class="unlock-row">
-          <input
-            id="master-password"
-            class="password-input"
-            type="password"
-            placeholder="Unlock your vault"
-            autocomplete="current-password"
-          />
-          <button id="unlock-vault" class="unlock-button">Unlock</button>
+          <div class="password-stack">
+            <input
+              id="master-password"
+              class="password-input"
+              type="password"
+              placeholder="Enter your master password"
+              autocomplete="current-password"
+            />
+            <div id="secondary-password-group" class="secondary-password-group" hidden>
+              <input
+                id="secondary-password"
+                class="password-input"
+                type="password"
+                placeholder="Enter the secondary password"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+          <button id="unlock-vault" class="unlock-button">Authenticate</button>
         </div>
       </label>
-      <p class="hint">The popup will check this site again as soon as the vault unlocks.</p>
+      <p id="password-panel-hint" class="hint">Your password is only used for this fill request.</p>
     </section>
 
     <p id="native-host-status" class="message">Checking TermKey status...</p>
@@ -373,6 +393,8 @@ const unlockSectionEl =
 const unlockButton = document.querySelector<HTMLButtonElement>("#unlock-vault");
 const passwordInput =
   document.querySelector<HTMLInputElement>("#master-password");
+const secondaryPasswordInputEl =
+  document.querySelector<HTMLInputElement>("#secondary-password");
 const statusEl = document.querySelector<HTMLParagraphElement>("#native-host-status");
 const siteHostnameEl =
   document.querySelector<HTMLSpanElement>("#site-hostname");
@@ -382,6 +404,12 @@ const matchPickerEl = document.querySelector<HTMLElement>("#match-picker");
 const matchListSummaryEl =
   document.querySelector<HTMLSpanElement>("#match-list-summary");
 const matchListEl = document.querySelector<HTMLElement>("#match-list");
+const passwordPanelLabelEl =
+  document.querySelector<HTMLSpanElement>("#password-panel-label");
+const passwordPanelHintEl =
+  document.querySelector<HTMLParagraphElement>("#password-panel-hint");
+const secondaryPasswordGroupEl =
+  document.querySelector<HTMLElement>("#secondary-password-group");
 
 if (
   !backendDotEl ||
@@ -391,12 +419,16 @@ if (
   !unlockSectionEl ||
   !unlockButton ||
   !passwordInput ||
+  !secondaryPasswordInputEl ||
   !statusEl ||
   !siteHostnameEl ||
   !siteSummaryEl ||
   !matchPickerEl ||
   !matchListSummaryEl ||
-  !matchListEl
+  !matchListEl ||
+  !passwordPanelLabelEl ||
+  !passwordPanelHintEl ||
+  !secondaryPasswordGroupEl
 ) {
   throw new Error("Popup UI failed to initialize.");
 }
@@ -410,17 +442,22 @@ const fillButton = fillBestMatchButton;
 const unlockSection = unlockSectionEl;
 const unlockVaultButton = unlockButton;
 const masterPasswordInput = passwordInput;
+const secondaryPasswordInput = secondaryPasswordInputEl;
 const statusMessage = statusEl;
 const siteHostname = siteHostnameEl;
 const siteSummary = siteSummaryEl;
 const matchPicker = matchPickerEl;
 const matchListSummary = matchListSummaryEl;
 const matchList = matchListEl;
+const passwordPanelLabel = passwordPanelLabelEl;
+const passwordPanelHint = passwordPanelHintEl;
+const secondaryPasswordGroup = secondaryPasswordGroupEl;
 
 let currentSiteMatches: NativeHostSiteMatch[] = [];
+let pendingFillMatch: NativeHostSiteMatch | null = null;
 let fillingEntryId: string | null = null;
 let backendConnected = false;
-let vaultLocked = true;
+let vaultExists = true;
 let hasSupportedPage = true;
 let siteDetails = {
   hostname: "Waiting for page...",
@@ -499,7 +536,6 @@ function updateFillButtonState() {
   fillButton.disabled =
     !hasSupportedPage ||
     !backendConnected ||
-    vaultLocked ||
     !singleMatch ||
     fillingEntryId !== null;
   fillButton.textContent = fillingEntryId !== null ? "Filling..." : "Fill";
@@ -511,10 +547,33 @@ function resetMatches(summaryText: string) {
   updateFillButtonState();
 }
 
-function showUnlockSection(locked: boolean) {
-  vaultLocked = locked;
-  unlockSection.hidden = !locked;
-  updateFillButtonState();
+function renderPasswordPrompt() {
+  const activeMatch = pendingFillMatch;
+  unlockSection.hidden = activeMatch === null;
+
+  if (!activeMatch) {
+    passwordPanelLabel.textContent = "Master password";
+    passwordPanelHint.textContent = "Your password is only used for this fill request.";
+    masterPasswordInput.disabled = false;
+    masterPasswordInput.value = "";
+    secondaryPasswordInput.disabled = false;
+    secondaryPasswordInput.value = "";
+    secondaryPasswordGroup.hidden = true;
+    unlockVaultButton.disabled = true;
+    unlockVaultButton.textContent = "Authenticate";
+    return;
+  }
+
+  passwordPanelLabel.textContent = `Master password for ${activeMatch.name}`;
+  passwordPanelHint.textContent = activeMatch.hasSecondaryPassword
+    ? `Used only for this fill request on ${siteDetails.hostname}. This entry also requires its secondary password.`
+    : `Used only for this fill request on ${siteDetails.hostname}.`;
+  masterPasswordInput.disabled = fillingEntryId !== null;
+  secondaryPasswordInput.disabled = fillingEntryId !== null;
+  secondaryPasswordGroup.hidden = !activeMatch.hasSecondaryPassword;
+  unlockVaultButton.disabled = !backendConnected || fillingEntryId !== null;
+  unlockVaultButton.textContent =
+    fillingEntryId === activeMatch.id ? "Authenticating..." : "Authenticate";
 }
 
 function describeMatches(matches: NativeHostSiteMatch[]) {
@@ -537,15 +596,19 @@ function describeMatches(matches: NativeHostSiteMatch[]) {
 }
 
 function formatMatchDetail(match: NativeHostSiteMatch) {
+  const suffix = match.hasSecondaryPassword
+    ? " • Secondary password required"
+    : "";
+
   if (match.username) {
-    return match.username;
+    return `${match.username}${suffix}`;
   }
 
   if (match.url) {
-    return match.url;
+    return `${match.url}${suffix}`;
   }
 
-  return "No username saved";
+  return suffix ? `No username saved${suffix}` : "No username saved";
 }
 
 function renderMatchPicker() {
@@ -585,10 +648,13 @@ function renderMatchPicker() {
     const actionButton = document.createElement("button");
     actionButton.type = "button";
     actionButton.className = "fill-button match-fill-button";
-    actionButton.disabled =
-      !backendConnected || vaultLocked || fillingEntryId !== null;
+    actionButton.disabled = !backendConnected || fillingEntryId !== null;
     actionButton.textContent =
-      fillingEntryId === match.id ? "Filling..." : "Fill";
+      fillingEntryId === match.id
+        ? "Filling..."
+        : pendingFillMatch?.id === match.id
+          ? "Enter password"
+          : "Fill";
 
     content.append(name, detail);
     side.append(actionButton);
@@ -596,7 +662,7 @@ function renderMatchPicker() {
     option.append(main);
 
     actionButton.addEventListener("click", () => {
-      fillMatch(match);
+      beginFill(match);
     });
 
     fragment.append(option);
@@ -607,43 +673,106 @@ function renderMatchPicker() {
 
 function setCurrentSiteMatches(matches: NativeHostSiteMatch[]) {
   currentSiteMatches = matches;
+  if (
+    pendingFillMatch &&
+    !matches.some((match) => match.id === pendingFillMatch?.id)
+  ) {
+    pendingFillMatch = null;
+  }
   renderMatchPicker();
+  renderPasswordPrompt();
   updateFillButtonState();
 }
 
-function fillMatch(match: NativeHostSiteMatch) {
-  if (!backendConnected || vaultLocked) {
-    renderMessage("Unlock the vault and reconnect the backend before autofill.", "error");
+function beginFill(match: NativeHostSiteMatch) {
+  if (!backendConnected) {
+    renderMessage("Reconnect the extension backend before autofill.", "error");
     return;
   }
 
-  fillingEntryId = match.id;
+  pendingFillMatch = match;
   renderMatchPicker();
+  renderPasswordPrompt();
+  renderMessage(`Enter your master password to fill ${match.name}.`);
+  masterPasswordInput.focus();
+  masterPasswordInput.select();
+}
+
+function submitPendingFill() {
+  if (!pendingFillMatch) {
+    renderMessage("Choose a saved login before entering your password.", "error");
+    return;
+  }
+
+  if (!backendConnected) {
+    renderMessage("Reconnect the extension backend before autofill.", "error");
+    return;
+  }
+
+  const password = masterPasswordInput.value;
+  if (!password) {
+    renderMessage("Enter your master password to fill this login.", "error");
+    masterPasswordInput.focus();
+    return;
+  }
+
+  const secondaryPassword = pendingFillMatch.hasSecondaryPassword
+    ? secondaryPasswordInput.value
+    : "";
+  if (pendingFillMatch.hasSecondaryPassword && !secondaryPassword) {
+    renderMessage("Enter the secondary password for this login.", "error");
+    secondaryPasswordInput.focus();
+    return;
+  }
+
+  fillingEntryId = pendingFillMatch.id;
+  renderMatchPicker();
+  renderPasswordPrompt();
   updateFillButtonState();
-  renderMessage(`Filling ${match.name} into the current page...`);
+  renderMessage(`Filling ${pendingFillMatch.name} into the current page...`);
 
   sendMessage(
     {
       type: "termkey.autofill.fillSelectedMatch",
-      entryId: match.id,
+      entryId: pendingFillMatch.id,
+      password,
+      secondaryPassword: secondaryPassword || undefined,
     },
     (response) => {
       fillingEntryId = null;
-      renderMatchPicker();
-      updateFillButtonState();
 
       if (!response.ok) {
+        renderMatchPicker();
+        renderPasswordPrompt();
+        updateFillButtonState();
         renderMessage(`Autofill failed: ${response.error}`, "error");
+        if (pendingFillMatch?.hasSecondaryPassword) {
+          secondaryPasswordInput.focus();
+          secondaryPasswordInput.select();
+        } else {
+          masterPasswordInput.focus();
+          masterPasswordInput.select();
+        }
         return;
       }
 
       if (response.response.type !== "fill_result") {
+        renderMatchPicker();
+        renderPasswordPrompt();
+        updateFillButtonState();
         renderMessage(
           "Background returned the wrong response type for autofill.",
           "error"
         );
         return;
       }
+
+      pendingFillMatch = null;
+      masterPasswordInput.value = "";
+      secondaryPasswordInput.value = "";
+      renderMatchPicker();
+      renderPasswordPrompt();
+      updateFillButtonState();
 
       const result: PopupFillResultResponse = response.response;
       renderMessage(formatFillResultMessage(result), "success");
@@ -762,7 +891,8 @@ function refreshStatus() {
   const message: PopupToBackgroundMessage = { type: "termkey.nativeHost.status" };
   sendMessage(message, (response) => {
     if (!response.ok) {
-      showUnlockSection(true);
+      pendingFillMatch = null;
+      renderPasswordPrompt();
       resetMatches("Backend unavailable.");
       setBackendStatus(false, "Disconnected");
       renderMessage(response.error, "error");
@@ -770,7 +900,8 @@ function refreshStatus() {
     }
 
     if (response.response.type !== "status") {
-      showUnlockSection(true);
+      pendingFillMatch = null;
+      renderPasswordPrompt();
       resetMatches("Status check failed.");
       setBackendStatus(false, "Disconnected");
       renderMessage(
@@ -781,55 +912,18 @@ function refreshStatus() {
     }
 
     setBackendStatus(true, "Connected");
-    showUnlockSection(response.response.locked);
+    vaultExists = response.response.vaultExists;
 
-    if (response.response.locked) {
-      resetMatches("Unlock the vault to check for a saved login.");
-      renderMessage("Vault locked. Unlock to enable autofill.");
+    if (!vaultExists) {
+      pendingFillMatch = null;
+      renderPasswordPrompt();
+      resetMatches("Create your vault to save logins for this site.");
+      renderMessage("Vault not found. Run `termkey init` first.", "error");
       return;
     }
 
-    renderMessage("Vault unlocked. Checking this site...");
+    renderMessage("Checking this site...");
     findSiteMatches();
-  });
-}
-
-function unlockVault() {
-  const password = masterPasswordInput.value;
-  if (!password) {
-    renderMessage("Enter your master password to unlock the vault.", "error");
-    return;
-  }
-
-  unlockVaultButton.disabled = true;
-  unlockVaultButton.textContent = "Unlocking...";
-  renderMessage("Unlocking vault...");
-
-  const message: PopupToBackgroundMessage = {
-    type: "termkey.nativeHost.unlock",
-    password,
-  };
-
-  sendMessage(message, (response) => {
-    unlockVaultButton.disabled = false;
-    unlockVaultButton.textContent = "Unlock";
-    masterPasswordInput.value = "";
-
-    if (!response.ok) {
-      renderMessage(`Unlock failed: ${response.error}`, "error");
-      return;
-    }
-
-    if (response.response.type !== "unlock") {
-      renderMessage(
-        "Native host returned the wrong response type for unlock.",
-        "error"
-      );
-      return;
-    }
-
-    renderMessage("Vault unlocked. Checking this site...", "success");
-    refreshStatus();
   });
 }
 
@@ -840,18 +934,26 @@ fillButton.addEventListener("click", () => {
     return;
   }
 
-  fillMatch(singleMatch);
+  beginFill(singleMatch);
 });
 
-unlockVaultButton.addEventListener("click", unlockVault);
+unlockVaultButton.addEventListener("click", submitPendingFill);
 
 masterPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    unlockVault();
+    submitPendingFill();
   }
 });
 
+secondaryPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingFill();
+  }
+});
+
+renderPasswordPrompt();
 updateFillButtonState();
 primeCurrentSite();
 refreshStatus();

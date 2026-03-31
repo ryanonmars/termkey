@@ -8,6 +8,8 @@ export type NativeHostRequest =
   | {
       type: "get_autofill_entry";
       id: string;
+      password?: string;
+      secondaryPassword?: string;
     }
   | {
       type: "find_site_matches";
@@ -55,6 +57,7 @@ export type NativeHostSiteMatch = {
   username: string | null;
   url: string | null;
   matchType: "exact_origin" | "exact_host" | "subdomain";
+  hasSecondaryPassword: boolean;
 };
 
 export type NativeHostAutofillEntry = {
@@ -113,6 +116,8 @@ export type PopupToBackgroundMessage =
   | {
       type: "termkey.autofill.fillSelectedMatch";
       entryId: string;
+      password?: string;
+      secondaryPassword?: string;
     }
   | {
       type: "termkey.nativeHost.unlock";
