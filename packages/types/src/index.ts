@@ -16,6 +16,18 @@ export type NativeHostRequest =
       url: string;
     }
   | {
+      type: "generate_password";
+    }
+  | {
+      type: "save_password_entry";
+      name: string;
+      username?: string;
+      password: string;
+      url?: string;
+      masterPassword?: string;
+      secondaryPassword?: string;
+    }
+  | {
       type: "list_entries";
     }
   | {
@@ -56,7 +68,11 @@ export type NativeHostSiteMatch = {
   name: string;
   username: string | null;
   url: string | null;
-  matchType: "exact_origin" | "exact_host" | "subdomain";
+  matchType:
+    | "exact_origin"
+    | "exact_host"
+    | "subdomain"
+    | "registrable_domain";
   hasSecondaryPassword: boolean;
 };
 
@@ -68,6 +84,25 @@ export type NativeHostAutofillEntry = {
   url: string | null;
 };
 
+export type PopupCapturedLoginResponse = {
+  type: "captured_login";
+  candidate: {
+    username: string | null;
+    password: string;
+    url: string;
+  };
+};
+
+export type PopupGeneratedPasswordResponse = {
+  type: "generated_password";
+  candidate: {
+    username: string | null;
+    password: string;
+    url: string;
+  };
+  filledPasswordFields: number;
+};
+
 export type PopupFillResultResponse = {
   type: "fill_result";
   entryName: string;
@@ -76,12 +111,25 @@ export type PopupFillResultResponse = {
   filledPassword: boolean;
 };
 
+export type PopupSaveResultResponse = {
+  type: "save_entry_result";
+  entryName: string;
+};
+
 export type NativeHostResponse =
   | NativeHostPongResponse
   | NativeHostStatusResponse
   | {
       type: "autofill_entry";
       entry: NativeHostAutofillEntry;
+    }
+  | {
+      type: "generated_password";
+      password: string;
+    }
+  | {
+      type: "save_entry";
+      entryName: string;
     }
   | {
       type: "site_matches";
@@ -114,9 +162,24 @@ export type PopupToBackgroundMessage =
       type: "termkey.nativeHost.findSiteMatches";
     }
   | {
+      type: "termkey.content.captureVisibleCredentials";
+    }
+  | {
+      type: "termkey.passwords.generateForPage";
+    }
+  | {
       type: "termkey.autofill.fillSelectedMatch";
       entryId: string;
       password?: string;
+      secondaryPassword?: string;
+    }
+  | {
+      type: "termkey.nativeHost.savePasswordEntry";
+      name: string;
+      username?: string;
+      password: string;
+      url?: string;
+      masterPassword?: string;
       secondaryPassword?: string;
     }
   | {
@@ -127,7 +190,12 @@ export type PopupToBackgroundMessage =
 export type PopupToBackgroundResponse =
   | {
       ok: true;
-      response: NativeHostResponse | PopupFillResultResponse;
+      response:
+        | NativeHostResponse
+        | PopupCapturedLoginResponse
+        | PopupGeneratedPasswordResponse
+        | PopupFillResultResponse
+        | PopupSaveResultResponse;
     }
   | {
       ok: false;

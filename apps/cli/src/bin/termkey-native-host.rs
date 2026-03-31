@@ -1,5 +1,7 @@
 use std::io::{self, ErrorKind, Read, Write};
+use std::net::IpAddr;
 
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use termkey::vault::model::EntryMeta;
 use zeroize::Zeroizing;
@@ -11,6 +13,7 @@ use termkey::vault::model::{Entry, SecretType};
 enum NativeRequest {
     Ping,
     Status,
+    GeneratePassword,
     GetAutofillEntry {
         id: String,
         #[serde(default)]
@@ -20,6 +23,20 @@ enum NativeRequest {
         secondary_password: Option<String>,
     },
     FindSiteMatches { url: String },
+    SavePasswordEntry {
+        name: String,
+        #[serde(default)]
+        username: Option<String>,
+        password: String,
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        #[serde(alias = "masterPassword")]
+        master_password: Option<String>,
+        #[serde(default)]
+        #[serde(alias = "secondaryPassword")]
+        secondary_password: Option<String>,
+    },
     ListEntries,
     Unlock { password: String },
 }
@@ -45,6 +62,7 @@ struct StatusResponse {
 struct ParsedSite {
     origin: String,
     hostname: String,
+    registrable_domain: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -95,7 +113,9 @@ struct AutofillEntryResponse {
 enum NativeResponse {
     Pong { app: &'static str, version: &'static str },
     Status(StatusResponse),
+    GeneratedPassword { password: String },
     AutofillEntry { entry: AutofillEntryResponse },
+    SaveEntry { entry_name: String },
     SiteMatches(SiteMatchesResponse),
     ListEntries { entries: Vec<EntrySummary> },
     Unlock { unlocked: bool },
@@ -254,34 +274,163 @@ fn parse_site(input: &str) -> Option<ParsedSite> {
 
     Some(ParsedSite {
         origin: format!("{scheme}://{}", authority_without_userinfo.to_ascii_lowercase()),
+        registrable_domain: registrable_domain(&hostname),
         hostname,
     })
 }
 
-fn classify_site_match(current: &ParsedSite, candidate: &ParsedSite) -> Option<&'static str> {
-    if current.origin == candidate.origin {
-        return Some("exact_origin");
+fn registrable_domain(hostname: &str) -> Option<String> {
+    if hostname.starts_with('[') || hostname.parse::<IpAddr>().is_ok() {
+        return None;
     }
 
-    if current.hostname == candidate.hostname {
-        return Some("exact_host");
+    let labels: Vec<&str> = hostname.split('.').filter(|label| !label.is_empty()).collect();
+    if labels.len() < 2 {
+        return None;
     }
 
-    if current
-        .hostname
-        .ends_with(&format!(".{}", candidate.hostname))
-    {
-        return Some("subdomain");
+    const MULTI_LABEL_SUFFIXES: &[&str] = &[
+        "co.uk",
+        "org.uk",
+        "ac.uk",
+        "gov.uk",
+        "co.jp",
+        "com.au",
+        "net.au",
+        "org.au",
+        "co.nz",
+        "com.br",
+        "com.mx",
+        "co.in",
+        "com.sg",
+        "com.tr",
+        "com.cn",
+        "com.hk",
+        "com.tw",
+    ];
+
+    let suffix = format!("{}.{}", labels[labels.len() - 2], labels[labels.len() - 1]);
+    if MULTI_LABEL_SUFFIXES.contains(&suffix.as_str()) && labels.len() >= 3 {
+        return Some(
+            labels[labels.len() - 3..]
+                .join(".")
+                .to_ascii_lowercase(),
+        );
     }
 
-    None
+    Some(labels[labels.len() - 2..].join(".").to_ascii_lowercase())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SiteRule {
+    ExactOrigin(String),
+    ExactHost(String),
+    RegistrableDomain(String),
+}
+
+fn parse_site_rule(input: &str) -> Option<SiteRule> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(value) = trimmed.strip_prefix("origin:") {
+        return parse_site(value).map(|site| SiteRule::ExactOrigin(site.origin));
+    }
+
+    if let Some(value) = trimmed.strip_prefix("host:") {
+        return parse_site(value).map(|site| SiteRule::ExactHost(site.hostname));
+    }
+
+    if let Some(value) = trimmed.strip_prefix("domain:") {
+        let normalized = parse_site(value)
+            .and_then(|site| site.registrable_domain.or(Some(site.hostname)))
+            .or_else(|| registrable_domain(&value.to_ascii_lowercase()))?;
+        return Some(SiteRule::RegistrableDomain(normalized));
+    }
+
+    parse_site(trimmed).map(|site| {
+        if trimmed.contains("://") {
+            SiteRule::ExactOrigin(site.origin)
+        } else {
+            SiteRule::ExactHost(site.hostname)
+        }
+    })
+}
+
+fn derive_default_site_rules(url: Option<&str>) -> Vec<SiteRule> {
+    let Some(site) = url.and_then(parse_site) else {
+        return Vec::new();
+    };
+
+    let mut rules = vec![
+        SiteRule::ExactOrigin(site.origin.clone()),
+        SiteRule::ExactHost(site.hostname.clone()),
+    ];
+
+    if let Some(domain) = site.registrable_domain {
+        if domain != site.hostname {
+            rules.push(SiteRule::RegistrableDomain(domain));
+        }
+    }
+
+    rules
+}
+
+fn effective_site_rules(entry: &EntryMeta) -> Vec<SiteRule> {
+    let rules = if entry.site_rules.is_empty() {
+        derive_default_site_rules(entry.url.as_deref())
+    } else {
+        entry.site_rules
+            .iter()
+            .filter_map(|rule| parse_site_rule(rule))
+            .collect()
+    };
+
+    let mut deduped = Vec::new();
+    for rule in rules {
+        if !deduped.contains(&rule) {
+            deduped.push(rule);
+        }
+    }
+
+    deduped
+}
+
+fn classify_site_rule_match(current: &ParsedSite, rule: &SiteRule) -> Option<&'static str> {
+    match rule {
+        SiteRule::ExactOrigin(origin) => {
+            if current.origin == *origin {
+                Some("exact_origin")
+            } else {
+                None
+            }
+        }
+        SiteRule::ExactHost(hostname) => {
+            if current.hostname == *hostname {
+                Some("exact_host")
+            } else if current.hostname.ends_with(&format!(".{hostname}")) {
+                Some("subdomain")
+            } else {
+                None
+            }
+        }
+        SiteRule::RegistrableDomain(domain) => {
+            if current.registrable_domain.as_deref() == Some(domain.as_str()) {
+                Some("registrable_domain")
+            } else {
+                None
+            }
+        }
+    }
 }
 
 fn match_rank(match_type: &str) -> u8 {
     match match_type {
-        "exact_origin" => 3,
-        "exact_host" => 2,
-        "subdomain" => 1,
+        "exact_origin" => 4,
+        "exact_host" => 3,
+        "subdomain" => 2,
+        "registrable_domain" => 1,
         _ => 0,
     }
 }
@@ -310,9 +459,10 @@ fn find_site_matches(_state: &HostState, site_url: String) -> NativeResponse {
         .enumerate()
         .filter(|(_, entry)| entry.secret_type == SecretType::Password)
         .filter_map(|(index, entry)| {
-            let stored_url = entry.url.as_deref()?;
-            let stored_site = parse_site(stored_url)?;
-            let match_type = classify_site_match(&current_site, &stored_site)?;
+            let match_type = effective_site_rules(entry)
+                .iter()
+                .filter_map(|rule| classify_site_rule_match(&current_site, rule))
+                .max_by_key(|match_type| match_rank(match_type))?;
 
             Some((
                 match_rank(match_type),
@@ -361,7 +511,7 @@ fn list_entries(state: &HostState) -> NativeResponse {
     NativeResponse::ListEntries { entries }
 }
 
-fn read_vault_for_autofill(state: &HostState, password: Option<String>) -> Result<vault::model::VaultData, NativeResponse> {
+fn resolve_vault_password(state: &HostState, password: Option<String>) -> Result<String, NativeResponse> {
     let password = match password {
         Some(password) => password,
         None => match require_unlocked_password(state) {
@@ -370,12 +520,28 @@ fn read_vault_for_autofill(state: &HostState, password: Option<String>) -> Resul
         },
     };
 
+    if password.is_empty() {
+        return Err(NativeResponse::Error {
+            message: "Enter your master password.".to_string(),
+        });
+    }
+
+    Ok(password)
+}
+
+fn read_vault_with_password(password: &str) -> Result<vault::model::VaultData, NativeResponse> {
     match vault::storage::read_vault(password.as_bytes(), &vault::storage::vault_path()) {
         Ok(vault) => Ok(vault),
         Err(err) => Err(NativeResponse::Error {
             message: err.to_string(),
         }),
     }
+}
+
+fn read_vault_for_autofill(state: &HostState, password: Option<String>) -> Result<vault::model::VaultData, NativeResponse> {
+    let password = resolve_vault_password(state, password)?;
+
+    read_vault_with_password(&password)
 }
 
 fn decrypt_secondary_password_entry(entry: &Entry, secondary_password: &str) -> Result<Zeroizing<String>, NativeResponse> {
@@ -490,6 +656,136 @@ fn get_autofill_entry(
     }
 }
 
+fn normalize_optional_field(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn build_password_entry(
+    name: String,
+    username: Option<String>,
+    password: String,
+    url: Option<String>,
+    secondary_password: Option<String>,
+) -> Result<Entry, NativeResponse> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(NativeResponse::Error {
+            message: "Enter a name for this login.".to_string(),
+        });
+    }
+
+    if password.is_empty() {
+        return Err(NativeResponse::Error {
+            message: "Password cannot be empty.".to_string(),
+        });
+    }
+
+    let now = Utc::now();
+    let username = normalize_optional_field(username);
+    let url = normalize_optional_field(url);
+    let secondary_password = normalize_optional_field(secondary_password);
+
+    let (
+        has_secondary_password,
+        secret,
+        entry_key_wrapped,
+        entry_key_nonce,
+        entry_key_salt,
+        encrypted_secret,
+        encrypted_secret_nonce,
+    ) = if let Some(secondary_password) = secondary_password {
+        let entry_key = crypto::entry_key::generate_entry_key();
+        let (encrypted_secret, encrypted_secret_nonce) =
+            crypto::entry_key::encrypt_secret(&entry_key, &password).map_err(|err| {
+                NativeResponse::Error {
+                    message: err.to_string(),
+                }
+            })?;
+        let (entry_key_wrapped, entry_key_nonce, entry_key_salt) =
+            crypto::entry_key::wrap_entry_key(&entry_key, &secondary_password).map_err(
+                |err| NativeResponse::Error {
+                    message: err.to_string(),
+                },
+            )?;
+
+        (
+            true,
+            "[encrypted]".to_string(),
+            Some(entry_key_wrapped),
+            Some(entry_key_nonce),
+            Some(entry_key_salt),
+            Some(encrypted_secret),
+            Some(encrypted_secret_nonce),
+        )
+    } else {
+        (false, password, None, None, None, None, None)
+    };
+
+    Ok(Entry {
+        name,
+        secret,
+        secret_type: SecretType::Password,
+        network: "Password".to_string(),
+        public_address: None,
+        username,
+        url,
+        site_rules: Vec::new(),
+        notes: String::new(),
+        created_at: now,
+        updated_at: now,
+        has_secondary_password,
+        entry_key_wrapped,
+        entry_key_nonce,
+        entry_key_salt,
+        encrypted_secret,
+        encrypted_secret_nonce,
+    })
+}
+
+fn save_password_entry(
+    state: &HostState,
+    name: String,
+    username: Option<String>,
+    password: String,
+    url: Option<String>,
+    master_password: Option<String>,
+    secondary_password: Option<String>,
+) -> NativeResponse {
+    let vault_password = match resolve_vault_password(state, master_password) {
+        Ok(password) => password,
+        Err(response) => return response,
+    };
+
+    let mut vault = match read_vault_with_password(&vault_password) {
+        Ok(vault) => vault,
+        Err(response) => return response,
+    };
+
+    let entry = match build_password_entry(name, username, password, url, secondary_password) {
+        Ok(entry) => entry,
+        Err(response) => return response,
+    };
+
+    if vault.has_entry(&entry.name) {
+        return NativeResponse::Error {
+            message: format!("Entry '{}' already exists.", entry.name),
+        };
+    }
+
+    let entry_name = entry.name.clone();
+    vault.entries.push(entry);
+
+    match vault::storage::write_vault(&vault, vault_password.as_bytes(), &vault::storage::vault_path())
+    {
+        Ok(()) => NativeResponse::SaveEntry { entry_name },
+        Err(err) => NativeResponse::Error {
+            message: err.to_string(),
+        },
+    }
+}
+
 fn handle_request(state: &mut HostState, payload: &[u8]) -> NativeResponse {
     let request = match serde_json::from_slice::<NativeRequest>(payload) {
         Ok(request) => request,
@@ -506,12 +802,31 @@ fn handle_request(state: &mut HostState, payload: &[u8]) -> NativeResponse {
             version: env!("CARGO_PKG_VERSION"),
         },
         NativeRequest::Status => NativeResponse::Status(load_status_for_state(state)),
+        NativeRequest::GeneratePassword => NativeResponse::GeneratedPassword {
+            password: crypto::passwords::generate_password(),
+        },
         NativeRequest::GetAutofillEntry {
             id,
             password,
             secondary_password,
         } => get_autofill_entry(state, id, password, secondary_password),
         NativeRequest::FindSiteMatches { url } => find_site_matches(state, url),
+        NativeRequest::SavePasswordEntry {
+            name,
+            username,
+            password,
+            url,
+            master_password,
+            secondary_password,
+        } => save_password_entry(
+            state,
+            name,
+            username,
+            password,
+            url,
+            master_password,
+            secondary_password,
+        ),
         NativeRequest::ListEntries => list_entries(state),
         NativeRequest::Unlock { password } => unlock_vault(state, password),
     }
@@ -536,8 +851,8 @@ fn main() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_site_match, handle_request, load_status_for_state, parse_site, read_message,
-        write_message, HostState, NativeResponse,
+        classify_site_rule_match, handle_request, load_status_for_state, parse_site,
+        read_message, write_message, HostState, NativeResponse, SiteRule,
     };
     use chrono::Utc;
     use std::io::Cursor;
@@ -545,7 +860,7 @@ mod tests {
     use tempfile::TempDir;
     use termkey::crypto::entry_key;
     use termkey::vault::model::{Entry, SecretType, VaultData};
-    use termkey::vault::storage::write_vault;
+    use termkey::vault::storage::{read_vault, write_vault};
     use zeroize::Zeroizing;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -563,6 +878,7 @@ mod tests {
                 public_address: None,
                 username: Some("ryan".to_string()),
                 url: Some("https://example.com".to_string()),
+                site_rules: Vec::new(),
                 notes: String::new(),
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -593,6 +909,7 @@ mod tests {
                 public_address: None,
                 username: Some("ryan".to_string()),
                 url: Some("https://secure.example.com".to_string()),
+                site_rules: Vec::new(),
                 notes: String::new(),
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -602,6 +919,59 @@ mod tests {
                 entry_key_salt: Some(key_salt),
                 encrypted_secret: Some(encrypted_secret),
                 encrypted_secret_nonce: Some(encrypted_secret_nonce),
+            }],
+            version: 1,
+        }
+    }
+
+    fn test_vault_with_domain_rule_entry() -> VaultData {
+        VaultData {
+            entries: vec![Entry {
+                name: "Google Account".to_string(),
+                secret: "super-secret".to_string(),
+                secret_type: SecretType::Password,
+                network: "Password".to_string(),
+                public_address: None,
+                username: Some("ryan".to_string()),
+                url: Some("https://accounts.google.com".to_string()),
+                site_rules: Vec::new(),
+                notes: String::new(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                has_secondary_password: false,
+                entry_key_wrapped: None,
+                entry_key_nonce: None,
+                entry_key_salt: None,
+                encrypted_secret: None,
+                encrypted_secret_nonce: None,
+            }],
+            version: 1,
+        }
+    }
+
+    fn test_vault_with_explicit_site_rule_entry() -> VaultData {
+        VaultData {
+            entries: vec![Entry {
+                name: "Admin Login".to_string(),
+                secret: "super-secret".to_string(),
+                secret_type: SecretType::Password,
+                network: "Password".to_string(),
+                public_address: None,
+                username: Some("ryan".to_string()),
+                url: None,
+                site_rules: vec![
+                    "host:auth.example.com".to_string(),
+                    "domain:example.com".to_string(),
+                ],
+                notes: String::new(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                has_secondary_password: false,
+                entry_key_wrapped: None,
+                entry_key_nonce: None,
+                entry_key_salt: None,
+                encrypted_secret: None,
+                encrypted_secret_nonce: None,
             }],
             version: 1,
         }
@@ -625,6 +995,18 @@ mod tests {
         let response = handle_request(&mut HostState::default(), b"not-json");
 
         assert!(matches!(response, NativeResponse::Error { .. }));
+    }
+
+    #[test]
+    fn generate_password_returns_generated_password() {
+        let response = handle_request(&mut HostState::default(), br#"{"type":"generate_password"}"#);
+
+        match response {
+            NativeResponse::GeneratedPassword { password } => {
+                assert_eq!(password.len(), 24);
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
     }
 
     #[test]
@@ -730,6 +1112,145 @@ mod tests {
                 assert_eq!(matches.site_hostname, "example.com");
                 assert_eq!(matches.matches.len(), 1);
                 assert_eq!(matches.matches[0].name, "Email");
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn site_matches_support_registrable_domain_matching() {
+        let _guard = env_lock().lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        write_vault(&test_vault_with_domain_rule_entry(), b"correct horse battery staple", &path)
+            .unwrap();
+
+        let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+
+        let response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"find_site_matches","url":"https://mail.google.com"}"#,
+        );
+
+        match previous_vault_dir {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+
+        match response {
+            NativeResponse::SiteMatches(matches) => {
+                assert_eq!(matches.matches.len(), 1);
+                assert_eq!(matches.matches[0].match_type, "registrable_domain");
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn site_matches_support_explicit_site_rules_without_url() {
+        let _guard = env_lock().lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        write_vault(
+            &test_vault_with_explicit_site_rule_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
+
+        let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+
+        let response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"find_site_matches","url":"https://dashboard.example.com"}"#,
+        );
+
+        match previous_vault_dir {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+
+        match response {
+            NativeResponse::SiteMatches(matches) => {
+                assert_eq!(matches.matches.len(), 1);
+                assert_eq!(matches.matches[0].name, "Admin Login");
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn save_password_entry_accepts_one_off_master_password() {
+        let _guard = env_lock().lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        write_vault(&VaultData::new(), b"correct horse battery staple", &path).unwrap();
+
+        let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+
+        let response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"save_password_entry","name":"Example Login","username":"ryan@example.com","password":"super-secret","url":"https://example.com/login","masterPassword":"correct horse battery staple"}"#,
+        );
+
+        let saved_vault = read_vault(b"correct horse battery staple", &path).unwrap();
+
+        match previous_vault_dir {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+
+        match response {
+            NativeResponse::SaveEntry { entry_name } => {
+                assert_eq!(entry_name, "Example Login");
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+
+        assert_eq!(saved_vault.entries.len(), 1);
+        assert_eq!(saved_vault.entries[0].name, "Example Login");
+        assert_eq!(
+            saved_vault.entries[0].username.as_deref(),
+            Some("ryan@example.com")
+        );
+        assert_eq!(saved_vault.entries[0].url.as_deref(), Some("https://example.com/login"));
+        assert_eq!(saved_vault.entries[0].secret, "super-secret");
+        assert!(!saved_vault.entries[0].has_secondary_password);
+    }
+
+    #[test]
+    fn save_password_entry_supports_secondary_password() {
+        let _guard = env_lock().lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        write_vault(&VaultData::new(), b"correct horse battery staple", &path).unwrap();
+
+        let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+
+        let save_response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"save_password_entry","name":"Protected Login","username":"ryan@example.com","password":"super-secret","url":"https://secure.example.com","masterPassword":"correct horse battery staple","secondaryPassword":"view-pass"}"#,
+        );
+        let autofill_response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"get_autofill_entry","id":"1","password":"correct horse battery staple","secondaryPassword":"view-pass"}"#,
+        );
+
+        match previous_vault_dir {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+
+        assert!(matches!(save_response, NativeResponse::SaveEntry { .. }));
+
+        match autofill_response {
+            NativeResponse::AutofillEntry { entry } => {
+                assert_eq!(entry.name, "Protected Login");
+                assert_eq!(entry.password, "super-secret");
             }
             other => panic!("unexpected response: {:?}", other),
         }
@@ -867,13 +1388,18 @@ mod tests {
     #[test]
     fn classify_site_match_prefers_origin_then_host_then_subdomain() {
         let current = parse_site("https://app.example.com/login").unwrap();
-        let exact_origin = parse_site("https://app.example.com").unwrap();
-        let exact_host = parse_site("http://app.example.com").unwrap();
-        let subdomain = parse_site("example.com").unwrap();
+        let exact_origin = SiteRule::ExactOrigin("https://app.example.com".to_string());
+        let exact_host = SiteRule::ExactHost("app.example.com".to_string());
+        let subdomain = SiteRule::ExactHost("example.com".to_string());
+        let registrable_domain = SiteRule::RegistrableDomain("example.com".to_string());
 
-        assert_eq!(classify_site_match(&current, &exact_origin), Some("exact_origin"));
-        assert_eq!(classify_site_match(&current, &exact_host), Some("exact_host"));
-        assert_eq!(classify_site_match(&current, &subdomain), Some("subdomain"));
+        assert_eq!(classify_site_rule_match(&current, &exact_origin), Some("exact_origin"));
+        assert_eq!(classify_site_rule_match(&current, &exact_host), Some("exact_host"));
+        assert_eq!(classify_site_rule_match(&current, &subdomain), Some("subdomain"));
+        assert_eq!(
+            classify_site_rule_match(&current, &registrable_domain),
+            Some("registrable_domain")
+        );
     }
 
     #[test]

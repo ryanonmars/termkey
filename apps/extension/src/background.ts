@@ -122,6 +122,8 @@ function handleNativeHostResponse(response: NativeHostResponse | undefined) {
     response.type !== "pong" &&
     response.type !== "status" &&
     response.type !== "autofill_entry" &&
+    response.type !== "generated_password" &&
+    response.type !== "save_entry" &&
     response.type !== "site_matches" &&
     response.type !== "list_entries" &&
     response.type !== "unlock"
@@ -208,6 +210,135 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message?.type === "termkey.content.captureVisibleCredentials") {
+      void Promise.all([getCurrentTabId(), getCurrentTabUrl()])
+        .then(([tabId, url]) =>
+          ensureContentScript(tabId).then(() =>
+            sendMessageToTab<{
+              ok: boolean;
+              error?: string;
+              username?: string | null;
+              password?: string;
+            }>(tabId, {
+              type: "termkey.captureVisibleCredentials",
+            }).then((captureResponse) => ({ captureResponse, url }))
+          )
+        )
+        .then(
+          ({
+            captureResponse,
+            url,
+          }: {
+            captureResponse: {
+              ok: boolean;
+              error?: string;
+              username?: string | null;
+              password?: string;
+            };
+            url: string;
+          }) => {
+            if (!captureResponse?.ok || !captureResponse.password) {
+              sendResponse({
+                ok: false,
+                error:
+                  captureResponse?.error ??
+                  "Could not read the current login fields from this page.",
+              });
+              return;
+            }
+
+            sendResponse({
+              ok: true,
+              response: {
+                type: "captured_login",
+                candidate: {
+                  username: captureResponse.username ?? null,
+                  password: captureResponse.password,
+                  url,
+                },
+              },
+            });
+          }
+        )
+        .catch((error: Error) => {
+          sendResponse({ ok: false, error: error.message });
+        });
+      return true;
+    }
+
+    if (message?.type === "termkey.passwords.generateForPage") {
+      void Promise.all([
+        getCurrentTabId(),
+        getCurrentTabUrl(),
+        enqueueNativeHostRequest({ type: "generate_password" }),
+      ])
+        .then(([tabId, url, nativeResponse]) => {
+          if (!nativeResponse.ok) {
+            sendResponse(nativeResponse);
+            return;
+          }
+
+          if (nativeResponse.response.type !== "generated_password") {
+            sendResponse({
+              ok: false,
+              error: "Native host returned the wrong response type for password generation.",
+            });
+            return;
+          }
+
+          const generatedPassword = (
+            nativeResponse.response as Extract<
+              NativeHostResponse,
+              { type: "generated_password" }
+            >
+          ).password;
+
+          void ensureContentScript(tabId)
+            .then(() =>
+              sendMessageToTab<{
+                ok: boolean;
+                error?: string;
+                username?: string | null;
+                filledPasswordFields?: number;
+              }>(tabId, {
+                type: "termkey.fillGeneratedPassword",
+                password: generatedPassword,
+              })
+            )
+            .then((fillResponse) => {
+              if (!fillResponse?.ok) {
+                sendResponse({
+                  ok: false,
+                  error:
+                    fillResponse?.error ??
+                    "Content script could not fill generated password fields.",
+                });
+                return;
+              }
+
+              sendResponse({
+                ok: true,
+                response: {
+                  type: "generated_password",
+                  candidate: {
+                    username: fillResponse.username ?? null,
+                    password: generatedPassword,
+                    url,
+                  },
+                  filledPasswordFields: fillResponse.filledPasswordFields ?? 0,
+                },
+              });
+            })
+            .catch((error: Error) => {
+              sendResponse({ ok: false, error: error.message });
+            });
+        })
+        .catch((error: Error) => {
+          sendResponse({ ok: false, error: error.message });
+        });
+      return true;
+    }
+
     if (message?.type === "termkey.autofill.fillSelectedMatch") {
       void getCurrentTabId()
         .then((tabId) =>
@@ -271,6 +402,44 @@ chrome.runtime.onMessage.addListener(
             .catch((error: Error) => {
               sendResponse({ ok: false, error: error.message });
             });
+        })
+        .catch((error: Error) => {
+          sendResponse({ ok: false, error: error.message });
+        });
+      return true;
+    }
+
+    if (message?.type === "termkey.nativeHost.savePasswordEntry") {
+      void enqueueNativeHostRequest({
+        type: "save_password_entry",
+        name: message.name,
+        username: message.username,
+        password: message.password,
+        url: message.url,
+        masterPassword: message.masterPassword,
+        secondaryPassword: message.secondaryPassword,
+      })
+        .then((response) => {
+          if (!response.ok) {
+            sendResponse(response);
+            return;
+          }
+
+          if (response.response.type !== "save_entry") {
+            sendResponse({
+              ok: false,
+              error: "Native host returned the wrong response type for save.",
+            });
+            return;
+          }
+
+          sendResponse({
+            ok: true,
+            response: {
+              type: "save_entry_result",
+              entryName: response.response.entryName,
+            },
+          });
         })
         .catch((error: Error) => {
           sendResponse({ ok: false, error: error.message });

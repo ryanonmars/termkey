@@ -8,8 +8,17 @@ type FillCredentialsMessage = {
   };
 };
 
+type FillGeneratedPasswordMessage = {
+  type: "termkey.fillGeneratedPassword";
+  password: string;
+};
+
 type ContentScriptProbeMessage = {
   type: "termkey.contentScriptProbe";
+};
+
+type CaptureVisibleCredentialsMessage = {
+  type: "termkey.captureVisibleCredentials";
 };
 
 type FillAttemptResult = {
@@ -323,6 +332,158 @@ function findBestUsernameInput(
   return usernameCandidates[0]?.input;
 }
 
+function sharesCandidateContext(
+  left: HTMLInputElement,
+  right: HTMLInputElement | undefined
+) {
+  if (!right) {
+    return false;
+  }
+
+  if (left.form && right.form && left.form === right.form) {
+    return true;
+  }
+
+  const leftRoot = getCandidateRoot(left);
+  const rightRoot = getCandidateRoot(right);
+  return Boolean(leftRoot && rightRoot && leftRoot === rightRoot);
+}
+
+function getGeneratedPasswordCandidateScore(input: HTMLInputElement) {
+  if (!isVisibleInput(input) || getInputType(input) !== "password") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const autocompleteTokens = getAutocompleteTokens(input);
+  const descriptor = getInputDescriptor(input);
+  let score = 0;
+
+  if (autocompleteTokens.includes("new-password")) {
+    score += 20;
+  }
+
+  if (/new|create|choose|set|signup|sign.?up|register/.test(descriptor)) {
+    score += 10;
+  }
+
+  if (/confirm|confirmation|repeat|verify|re-enter/.test(descriptor)) {
+    score -= 8;
+  }
+
+  if (autocompleteTokens.includes("current-password")) {
+    score -= 18;
+  }
+
+  if (/current|old|existing/.test(descriptor)) {
+    score -= 18;
+  }
+
+  if (/otp|one.?time|2fa|code|search|coupon|promo/.test(descriptor)) {
+    score -= 12;
+  }
+
+  return score + getContextBoost(input);
+}
+
+function getConfirmationPasswordScore(
+  input: HTMLInputElement,
+  primaryPasswordInput: HTMLInputElement | undefined
+) {
+  if (
+    !isVisibleInput(input) ||
+    getInputType(input) !== "password" ||
+    input === primaryPasswordInput
+  ) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const autocompleteTokens = getAutocompleteTokens(input);
+  const descriptor = getInputDescriptor(input);
+  let score = 0;
+
+  if (/confirm|confirmation|repeat|verify|re-enter|match/.test(descriptor)) {
+    score += 18;
+  }
+
+  if (autocompleteTokens.includes("new-password")) {
+    score += 8;
+  }
+
+  if (sharesCandidateContext(input, primaryPasswordInput)) {
+    score += 8;
+  }
+
+  if (
+    primaryPasswordInput &&
+    input.compareDocumentPosition(primaryPasswordInput) &
+      Node.DOCUMENT_POSITION_PRECEDING
+  ) {
+    score += 6;
+  }
+
+  if (autocompleteTokens.includes("current-password")) {
+    score -= 18;
+  }
+
+  if (/current|old|existing/.test(descriptor)) {
+    score -= 18;
+  }
+
+  if (/otp|one.?time|2fa|code|search|coupon|promo/.test(descriptor)) {
+    score -= 12;
+  }
+
+  return score + getContextBoost(input);
+}
+
+function findGeneratedPasswordTargets(inputs: HTMLInputElement[]) {
+  const passwordCandidates = inputs
+    .map((input) => ({
+      input,
+      score: getGeneratedPasswordCandidateScore(input),
+    }))
+    .filter(
+      (
+        candidate
+      ): candidate is { input: HTMLInputElement; score: number } =>
+        Number.isFinite(candidate.score)
+    )
+    .sort((left, right) => right.score - left.score);
+
+  const primaryPasswordInput = passwordCandidates[0]?.input;
+  if (!primaryPasswordInput) {
+    return {};
+  }
+
+  const confirmationCandidates = inputs
+    .map((input) => ({
+      input,
+      score: getConfirmationPasswordScore(input, primaryPasswordInput),
+    }))
+    .filter(
+      (
+        candidate
+      ): candidate is { input: HTMLInputElement; score: number } =>
+        Number.isFinite(candidate.score)
+    )
+    .sort((left, right) => right.score - left.score);
+
+  let confirmationPasswordInput = confirmationCandidates[0]?.input;
+  if (
+    !confirmationPasswordInput &&
+    passwordCandidates.length > 1 &&
+    sharesCandidateContext(passwordCandidates[1].input, primaryPasswordInput)
+  ) {
+    confirmationPasswordInput = passwordCandidates[1].input;
+  }
+
+  return {
+    primaryPasswordInput,
+    confirmationPasswordInput,
+    usernameInput: findBestUsernameInput(inputs, primaryPasswordInput),
+  };
+}
+
 function fillVisibleCredentials(
   message: FillCredentialsMessage
 ): FillAttemptResult {
@@ -393,14 +554,90 @@ async function fillCredentials(message: FillCredentialsMessage) {
   };
 }
 
+function captureVisibleCredentials() {
+  const inputs = collectInputElements();
+  const passwordInput = findBestPasswordInput(inputs);
+
+  if (!passwordInput) {
+    return {
+      ok: false,
+      error: "No visible password field was found on this page.",
+    };
+  }
+
+  if (!passwordInput.value) {
+    return {
+      ok: false,
+      error: "Type your password into the page before saving this login.",
+    };
+  }
+
+  const usernameInput = findBestUsernameInput(inputs, passwordInput);
+  const username = usernameInput?.value.trim() || null;
+
+  return {
+    ok: true,
+    username,
+    password: passwordInput.value,
+  };
+}
+
+function fillGeneratedPassword(message: FillGeneratedPasswordMessage) {
+  const inputs = collectInputElements();
+  const {
+    primaryPasswordInput,
+    confirmationPasswordInput,
+    usernameInput,
+  } = findGeneratedPasswordTargets(inputs);
+
+  if (!primaryPasswordInput) {
+    return {
+      ok: false,
+      error:
+        "No visible signup password field was found on this page. Open the account creation form first.",
+    };
+  }
+
+  setInputValue(primaryPasswordInput, message.password);
+
+  let filledPasswordFields = 1;
+  if (
+    confirmationPasswordInput &&
+    confirmationPasswordInput !== primaryPasswordInput
+  ) {
+    setInputValue(confirmationPasswordInput, message.password);
+    filledPasswordFields += 1;
+  }
+
+  return {
+    ok: true,
+    username: usernameInput?.value.trim() || null,
+    filledPasswordFields,
+  };
+}
+
 chrome.runtime.onMessage.addListener(
   (
-    message: FillCredentialsMessage | ContentScriptProbeMessage,
+    message:
+      | FillCredentialsMessage
+      | FillGeneratedPasswordMessage
+      | ContentScriptProbeMessage
+      | CaptureVisibleCredentialsMessage,
     _sender: unknown,
     sendResponse: (response: unknown) => void
   ) => {
     if (message?.type === "termkey.contentScriptProbe") {
       sendResponse({ ok: true });
+      return true;
+    }
+
+    if (message?.type === "termkey.captureVisibleCredentials") {
+      sendResponse(captureVisibleCredentials());
+      return true;
+    }
+
+    if (message?.type === "termkey.fillGeneratedPassword") {
+      sendResponse(fillGeneratedPassword(message));
       return true;
     }
 

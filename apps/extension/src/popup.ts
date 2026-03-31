@@ -2,7 +2,10 @@ declare const chrome: any;
 
 import type {
   NativeHostSiteMatch,
+  PopupCapturedLoginResponse,
   PopupFillResultResponse,
+  PopupGeneratedPasswordResponse,
+  PopupSaveResultResponse,
   PopupToBackgroundMessage,
   PopupToBackgroundResponse,
 } from "@termkey/types";
@@ -97,6 +100,13 @@ document.body.innerHTML = `
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+    }
+
+    .site-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     .site-label {
@@ -213,19 +223,36 @@ document.body.innerHTML = `
     }
 
     .fill-button,
+    .generate-button,
+    .save-button,
     .unlock-button {
       border: 0;
       border-radius: 12px;
-      background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
-      color: #03120a;
       font-weight: 700;
       cursor: pointer;
       transition: transform 140ms ease, opacity 140ms ease;
     }
 
     .fill-button {
+      background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+      color: #03120a;
       min-width: 76px;
       padding: 10px 14px;
+    }
+
+    .generate-button {
+      min-width: 92px;
+      padding: 10px 14px;
+      background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
+      color: #062033;
+    }
+
+    .save-button {
+      min-width: 76px;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.9);
+      color: #dbeafe;
+      border: 1px solid rgba(125, 211, 252, 0.26);
     }
 
     .match-fill-button {
@@ -235,15 +262,21 @@ document.body.innerHTML = `
     }
 
     .unlock-button {
+      background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+      color: #03120a;
       padding: 11px 14px;
     }
 
     .fill-button:hover:not(:disabled),
+    .generate-button:hover:not(:disabled),
+    .save-button:hover:not(:disabled),
     .unlock-button:hover:not(:disabled) {
       transform: translateY(-1px);
     }
 
     .fill-button:disabled,
+    .generate-button:disabled,
+    .save-button:disabled,
     .unlock-button:disabled {
       opacity: 0.45;
       cursor: not-allowed;
@@ -273,6 +306,11 @@ document.body.innerHTML = `
       display: none;
     }
 
+    .save-fields {
+      display: grid;
+      gap: 10px;
+    }
+
     .password-input {
       width: 100%;
       padding: 11px 12px;
@@ -290,6 +328,48 @@ document.body.innerHTML = `
     .password-input:focus {
       border-color: rgba(34, 197, 94, 0.6);
       box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+    }
+
+    .checkbox-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .checkbox-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: #22c55e;
+    }
+
+    .save-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .cancel-button {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #cbd5e1;
+      font-weight: 600;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: transform 140ms ease, opacity 140ms ease;
+    }
+
+    .cancel-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .cancel-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
     }
 
     .hint,
@@ -335,7 +415,11 @@ document.body.innerHTML = `
           <strong id="site-hostname" class="site-hostname">Waiting for page...</strong>
           <span id="site-summary" class="site-summary">Checking the current tab.</span>
         </div>
-        <button id="fill-best-match" class="fill-button" disabled>Fill</button>
+        <div class="site-actions">
+          <button id="generate-password" class="generate-button" disabled>Generate</button>
+          <button id="save-login" class="save-button" disabled>Save</button>
+          <button id="fill-best-match" class="fill-button" disabled>Fill</button>
+        </div>
       </div>
       <div id="match-picker" class="match-picker" hidden>
         <div class="match-picker-header">
@@ -349,6 +433,62 @@ document.body.innerHTML = `
           aria-label="Saved logins for the current site"
         ></div>
       </div>
+    </section>
+
+    <section id="save-section" class="panel" hidden>
+      <label class="save-fields">
+        <span class="unlock-label">Save login</span>
+        <input
+          id="save-entry-name"
+          class="password-input"
+          type="text"
+          placeholder="Entry name"
+          autocomplete="off"
+        />
+        <input
+          id="save-username"
+          class="password-input"
+          type="text"
+          placeholder="Username (optional)"
+          autocomplete="username"
+        />
+        <input
+          id="save-master-password"
+          class="password-input"
+          type="password"
+          placeholder="Enter your master password"
+          autocomplete="current-password"
+        />
+        <label class="checkbox-row">
+          <input id="save-use-secondary-password" type="checkbox" />
+          <span>Protect this login with a secondary password</span>
+        </label>
+        <div id="save-secondary-password-group" class="secondary-password-group" hidden>
+          <div class="password-stack">
+            <input
+              id="save-secondary-password"
+              class="password-input"
+              type="password"
+              placeholder="Secondary password"
+              autocomplete="off"
+            />
+            <input
+              id="save-secondary-password-confirm"
+              class="password-input"
+              type="password"
+              placeholder="Confirm secondary password"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      </label>
+      <div class="save-actions">
+        <button id="cancel-save" class="cancel-button" type="button">Cancel</button>
+        <button id="submit-save" class="unlock-button" type="button">Save login</button>
+      </div>
+      <p id="save-panel-hint" class="hint">
+        Reads the username and password currently typed into this page for this save request.
+      </p>
     </section>
 
     <section id="unlock-section" class="panel">
@@ -386,8 +526,34 @@ document.body.innerHTML = `
 const backendDotEl = document.querySelector<HTMLSpanElement>("#backend-dot");
 const backendLabelEl = document.querySelector<HTMLSpanElement>("#backend-label");
 const sitePanelEl = document.querySelector<HTMLElement>("#site-panel");
+const generatePasswordButtonEl =
+  document.querySelector<HTMLButtonElement>("#generate-password");
+const saveLoginButtonEl =
+  document.querySelector<HTMLButtonElement>("#save-login");
 const fillBestMatchButton =
   document.querySelector<HTMLButtonElement>("#fill-best-match");
+const saveSectionEl =
+  document.querySelector<HTMLElement>("#save-section");
+const saveEntryNameInputEl =
+  document.querySelector<HTMLInputElement>("#save-entry-name");
+const saveUsernameInputEl =
+  document.querySelector<HTMLInputElement>("#save-username");
+const saveMasterPasswordInputEl =
+  document.querySelector<HTMLInputElement>("#save-master-password");
+const saveUseSecondaryPasswordInputEl =
+  document.querySelector<HTMLInputElement>("#save-use-secondary-password");
+const saveSecondaryPasswordGroupEl =
+  document.querySelector<HTMLElement>("#save-secondary-password-group");
+const saveSecondaryPasswordInputEl =
+  document.querySelector<HTMLInputElement>("#save-secondary-password");
+const saveSecondaryPasswordConfirmInputEl =
+  document.querySelector<HTMLInputElement>("#save-secondary-password-confirm");
+const cancelSaveButtonEl =
+  document.querySelector<HTMLButtonElement>("#cancel-save");
+const submitSaveButtonEl =
+  document.querySelector<HTMLButtonElement>("#submit-save");
+const savePanelHintEl =
+  document.querySelector<HTMLParagraphElement>("#save-panel-hint");
 const unlockSectionEl =
   document.querySelector<HTMLElement>("#unlock-section");
 const unlockButton = document.querySelector<HTMLButtonElement>("#unlock-vault");
@@ -415,7 +581,20 @@ if (
   !backendDotEl ||
   !backendLabelEl ||
   !sitePanelEl ||
+  !generatePasswordButtonEl ||
+  !saveLoginButtonEl ||
   !fillBestMatchButton ||
+  !saveSectionEl ||
+  !saveEntryNameInputEl ||
+  !saveUsernameInputEl ||
+  !saveMasterPasswordInputEl ||
+  !saveUseSecondaryPasswordInputEl ||
+  !saveSecondaryPasswordGroupEl ||
+  !saveSecondaryPasswordInputEl ||
+  !saveSecondaryPasswordConfirmInputEl ||
+  !cancelSaveButtonEl ||
+  !submitSaveButtonEl ||
+  !savePanelHintEl ||
   !unlockSectionEl ||
   !unlockButton ||
   !passwordInput ||
@@ -438,7 +617,20 @@ type MessageTone = "neutral" | "success" | "error";
 const backendDot = backendDotEl;
 const backendLabel = backendLabelEl;
 const sitePanel = sitePanelEl;
+const generatePasswordButton = generatePasswordButtonEl;
+const saveLoginButton = saveLoginButtonEl;
 const fillButton = fillBestMatchButton;
+const saveSection = saveSectionEl;
+const saveEntryNameInput = saveEntryNameInputEl;
+const saveUsernameInput = saveUsernameInputEl;
+const saveMasterPasswordInput = saveMasterPasswordInputEl;
+const saveUseSecondaryPasswordInput = saveUseSecondaryPasswordInputEl;
+const saveSecondaryPasswordGroup = saveSecondaryPasswordGroupEl;
+const saveSecondaryPasswordInput = saveSecondaryPasswordInputEl;
+const saveSecondaryPasswordConfirmInput = saveSecondaryPasswordConfirmInputEl;
+const cancelSaveButton = cancelSaveButtonEl;
+const submitSaveButton = submitSaveButtonEl;
+const savePanelHint = savePanelHintEl;
 const unlockSection = unlockSectionEl;
 const unlockVaultButton = unlockButton;
 const masterPasswordInput = passwordInput;
@@ -455,7 +647,11 @@ const secondaryPasswordGroup = secondaryPasswordGroupEl;
 
 let currentSiteMatches: NativeHostSiteMatch[] = [];
 let pendingFillMatch: NativeHostSiteMatch | null = null;
+let pendingSaveCandidate: PopupCapturedLoginResponse["candidate"] | null = null;
 let fillingEntryId: string | null = null;
+let captureInFlight = false;
+let generationInFlight = false;
+let saveInFlight = false;
 let backendConnected = false;
 let vaultExists = true;
 let hasSupportedPage = true;
@@ -469,6 +665,7 @@ function setSiteVisibility(visible: boolean) {
   sitePanel.hidden = !visible;
   if (!visible) {
     setCurrentSiteMatches([]);
+    clearPendingSave();
   }
   updateFillButtonState();
 }
@@ -529,6 +726,32 @@ function renderSite(hostnameText: string, summaryText: string) {
   siteSummary.textContent = siteDetails.summary;
 }
 
+function suggestEntryName(hostnameText: string, username: string | null) {
+  if (username) {
+    return `${hostnameText} • ${username}`;
+  }
+
+  return hostnameText;
+}
+
+function stageSaveCandidate(
+  candidate: PopupCapturedLoginResponse["candidate"],
+  hintText: string
+) {
+  pendingSaveCandidate = candidate;
+  saveEntryNameInput.value = suggestEntryName(
+    siteDetails.hostname,
+    candidate.username
+  );
+  saveUsernameInput.value = candidate.username ?? "";
+  saveMasterPasswordInput.value = "";
+  saveUseSecondaryPasswordInput.checked = false;
+  saveSecondaryPasswordInput.value = "";
+  saveSecondaryPasswordConfirmInput.value = "";
+  savePanelHint.textContent = hintText;
+  renderSavePrompt();
+}
+
 function updateFillButtonState() {
   const singleMatch = currentSiteMatches.length === 1;
 
@@ -539,12 +762,47 @@ function updateFillButtonState() {
     !singleMatch ||
     fillingEntryId !== null;
   fillButton.textContent = fillingEntryId !== null ? "Filling..." : "Fill";
+
+  generatePasswordButton.disabled =
+    !hasSupportedPage ||
+    !backendConnected ||
+    captureInFlight ||
+    generationInFlight ||
+    saveInFlight ||
+    fillingEntryId !== null;
+  generatePasswordButton.textContent = generationInFlight
+    ? "Generating..."
+    : "Generate";
+
+  saveLoginButton.disabled =
+    !hasSupportedPage ||
+    !backendConnected ||
+    !vaultExists ||
+    captureInFlight ||
+    generationInFlight ||
+    saveInFlight ||
+    fillingEntryId !== null;
+  saveLoginButton.textContent = captureInFlight ? "Reading..." : "Save";
 }
 
 function resetMatches(summaryText: string) {
   setCurrentSiteMatches([]);
   renderSite(siteDetails.hostname, summaryText);
   updateFillButtonState();
+}
+
+function clearPendingSave() {
+  pendingSaveCandidate = null;
+  saveEntryNameInput.value = "";
+  saveUsernameInput.value = "";
+  saveMasterPasswordInput.value = "";
+  saveUseSecondaryPasswordInput.checked = false;
+  saveSecondaryPasswordInput.value = "";
+  saveSecondaryPasswordConfirmInput.value = "";
+  saveSecondaryPasswordGroup.hidden = true;
+  saveSection.hidden = true;
+  savePanelHint.textContent =
+    "Reads the username and password currently typed into this page for this save request.";
 }
 
 function renderPasswordPrompt() {
@@ -574,6 +832,31 @@ function renderPasswordPrompt() {
   unlockVaultButton.disabled = !backendConnected || fillingEntryId !== null;
   unlockVaultButton.textContent =
     fillingEntryId === activeMatch.id ? "Authenticating..." : "Authenticate";
+}
+
+function renderSavePrompt() {
+  const activeSave = pendingSaveCandidate;
+  saveSection.hidden = activeSave === null;
+  saveSecondaryPasswordGroup.hidden = !saveUseSecondaryPasswordInput.checked;
+
+  if (!activeSave) {
+    submitSaveButton.disabled = true;
+    submitSaveButton.textContent = "Save login";
+    cancelSaveButton.disabled = false;
+    return;
+  }
+
+  const disabled =
+    !backendConnected || saveInFlight || captureInFlight || generationInFlight;
+  saveEntryNameInput.disabled = saveInFlight;
+  saveUsernameInput.disabled = saveInFlight;
+  saveMasterPasswordInput.disabled = saveInFlight;
+  saveUseSecondaryPasswordInput.disabled = saveInFlight;
+  saveSecondaryPasswordInput.disabled = saveInFlight;
+  saveSecondaryPasswordConfirmInput.disabled = saveInFlight;
+  cancelSaveButton.disabled = saveInFlight;
+  submitSaveButton.disabled = disabled;
+  submitSaveButton.textContent = saveInFlight ? "Saving..." : "Save login";
 }
 
 function describeMatches(matches: NativeHostSiteMatch[]) {
@@ -681,6 +964,7 @@ function setCurrentSiteMatches(matches: NativeHostSiteMatch[]) {
   }
   renderMatchPicker();
   renderPasswordPrompt();
+  renderSavePrompt();
   updateFillButtonState();
 }
 
@@ -690,12 +974,138 @@ function beginFill(match: NativeHostSiteMatch) {
     return;
   }
 
+  clearPendingSave();
   pendingFillMatch = match;
   renderMatchPicker();
   renderPasswordPrompt();
   renderMessage(`Enter your master password to fill ${match.name}.`);
   masterPasswordInput.focus();
   masterPasswordInput.select();
+}
+
+function beginSave() {
+  if (!backendConnected) {
+    renderMessage("Reconnect the extension backend before saving a login.", "error");
+    return;
+  }
+
+  if (!vaultExists) {
+    renderMessage("Create your vault before saving a login.", "error");
+    return;
+  }
+
+  pendingFillMatch = null;
+  renderPasswordPrompt();
+  captureInFlight = true;
+  clearPendingSave();
+  updateFillButtonState();
+  renderMessage("Reading the current login fields from this page...");
+
+  sendMessage(
+    {
+      type: "termkey.content.captureVisibleCredentials",
+    },
+    (response) => {
+      captureInFlight = false;
+      updateFillButtonState();
+
+      if (!response.ok) {
+        renderSavePrompt();
+        renderMessage(`Could not read this login yet: ${response.error}`, "error");
+        return;
+      }
+
+      if (response.response.type !== "captured_login") {
+        renderSavePrompt();
+        renderMessage(
+          "Background returned the wrong response type for login capture.",
+          "error"
+        );
+        return;
+      }
+
+      const captured = response.response as PopupCapturedLoginResponse;
+      stageSaveCandidate(
+        captured.candidate,
+        `Saving for ${siteDetails.hostname}. The password is taken from the current page only for this request.`
+      );
+      renderMessage(`Ready to save a new login for ${siteDetails.hostname}.`);
+      saveEntryNameInput.focus();
+      saveEntryNameInput.select();
+    }
+  );
+}
+
+function formatGeneratedPasswordMessage(filledPasswordFields: number) {
+  if (filledPasswordFields >= 2) {
+    return "Generated a password and filled both password fields.";
+  }
+
+  return "Generated a password and filled the password field.";
+}
+
+function beginGeneratedPasswordFlow() {
+  if (!backendConnected) {
+    renderMessage("Reconnect the extension backend before generating a password.", "error");
+    return;
+  }
+
+  pendingFillMatch = null;
+  renderPasswordPrompt();
+  clearPendingSave();
+  generationInFlight = true;
+  updateFillButtonState();
+  renderMessage("Generating a strong password for this page...");
+
+  sendMessage(
+    {
+      type: "termkey.passwords.generateForPage",
+    },
+    (response) => {
+      generationInFlight = false;
+      updateFillButtonState();
+
+      if (!response.ok) {
+        renderSavePrompt();
+        renderMessage(`Password generation failed: ${response.error}`, "error");
+        return;
+      }
+
+      if (response.response.type !== "generated_password") {
+        renderSavePrompt();
+        renderMessage(
+          "Background returned the wrong response type for password generation.",
+          "error"
+        );
+        return;
+      }
+
+      const generated = response.response as PopupGeneratedPasswordResponse;
+
+      if (vaultExists) {
+        stageSaveCandidate(
+          generated.candidate,
+          `Saving for ${siteDetails.hostname}. This generated password is already staged for this save request.`
+        );
+        renderMessage(
+          `${formatGeneratedPasswordMessage(
+            generated.filledPasswordFields
+          )} Enter your master password to save it.`,
+          "success"
+        );
+        saveEntryNameInput.focus();
+        saveEntryNameInput.select();
+        return;
+      }
+
+      renderMessage(
+        `${formatGeneratedPasswordMessage(
+          generated.filledPasswordFields
+        )} Create your vault to save it.`,
+        "success"
+      );
+    }
+  );
 }
 
 function submitPendingFill() {
@@ -776,6 +1186,98 @@ function submitPendingFill() {
 
       const result: PopupFillResultResponse = response.response;
       renderMessage(formatFillResultMessage(result), "success");
+    }
+  );
+}
+
+function submitPendingSave() {
+  if (!pendingSaveCandidate) {
+    renderMessage("Capture a login from the current page before saving it.", "error");
+    return;
+  }
+
+  if (!backendConnected) {
+    renderMessage("Reconnect the extension backend before saving a login.", "error");
+    return;
+  }
+
+  const name = saveEntryNameInput.value.trim();
+  if (!name) {
+    renderMessage("Enter a name for this saved login.", "error");
+    saveEntryNameInput.focus();
+    return;
+  }
+
+  const masterPassword = saveMasterPasswordInput.value;
+  if (!masterPassword) {
+    renderMessage("Enter your master password to save this login.", "error");
+    saveMasterPasswordInput.focus();
+    return;
+  }
+
+  const secondaryPassword = saveUseSecondaryPasswordInput.checked
+    ? saveSecondaryPasswordInput.value
+    : "";
+  const secondaryPasswordConfirm = saveUseSecondaryPasswordInput.checked
+    ? saveSecondaryPasswordConfirmInput.value
+    : "";
+
+  if (saveUseSecondaryPasswordInput.checked && !secondaryPassword) {
+    renderMessage("Enter a secondary password for this login.", "error");
+    saveSecondaryPasswordInput.focus();
+    return;
+  }
+
+  if (
+    saveUseSecondaryPasswordInput.checked &&
+    secondaryPassword !== secondaryPasswordConfirm
+  ) {
+    renderMessage("Secondary passwords do not match.", "error");
+    saveSecondaryPasswordConfirmInput.focus();
+    return;
+  }
+
+  saveInFlight = true;
+  renderSavePrompt();
+  updateFillButtonState();
+  renderMessage(`Saving ${name} to your vault...`);
+
+  sendMessage(
+    {
+      type: "termkey.nativeHost.savePasswordEntry",
+      name,
+      username: saveUsernameInput.value.trim() || undefined,
+      password: pendingSaveCandidate.password,
+      url: pendingSaveCandidate.url,
+      masterPassword,
+      secondaryPassword: secondaryPassword || undefined,
+    },
+    (response) => {
+      saveInFlight = false;
+
+      if (!response.ok) {
+        renderSavePrompt();
+        updateFillButtonState();
+        renderMessage(`Save failed: ${response.error}`, "error");
+        return;
+      }
+
+      if (response.response.type !== "save_entry_result") {
+        renderSavePrompt();
+        updateFillButtonState();
+        renderMessage(
+          "Background returned the wrong response type for save.",
+          "error"
+        );
+        return;
+      }
+
+      const result: PopupSaveResultResponse = response.response;
+      clearPendingSave();
+      renderSavePrompt();
+      updateFillButtonState();
+      renderMessage(`Saved ${result.entryName}.`, "success");
+      findSiteMatches();
     }
   );
 }
@@ -892,6 +1394,7 @@ function refreshStatus() {
   sendMessage(message, (response) => {
     if (!response.ok) {
       pendingFillMatch = null;
+      clearPendingSave();
       renderPasswordPrompt();
       resetMatches("Backend unavailable.");
       setBackendStatus(false, "Disconnected");
@@ -901,6 +1404,7 @@ function refreshStatus() {
 
     if (response.response.type !== "status") {
       pendingFillMatch = null;
+      clearPendingSave();
       renderPasswordPrompt();
       resetMatches("Status check failed.");
       setBackendStatus(false, "Disconnected");
@@ -916,6 +1420,7 @@ function refreshStatus() {
 
     if (!vaultExists) {
       pendingFillMatch = null;
+      clearPendingSave();
       renderPasswordPrompt();
       resetMatches("Create your vault to save logins for this site.");
       renderMessage("Vault not found. Run `termkey init` first.", "error");
@@ -937,7 +1442,59 @@ fillButton.addEventListener("click", () => {
   beginFill(singleMatch);
 });
 
+generatePasswordButton.addEventListener("click", beginGeneratedPasswordFlow);
+saveLoginButton.addEventListener("click", beginSave);
+cancelSaveButton.addEventListener("click", () => {
+  clearPendingSave();
+  renderSavePrompt();
+  updateFillButtonState();
+  renderMessage("Save login cancelled.");
+});
+submitSaveButton.addEventListener("click", submitPendingSave);
 unlockVaultButton.addEventListener("click", submitPendingFill);
+
+saveUseSecondaryPasswordInput.addEventListener("change", () => {
+  if (!saveUseSecondaryPasswordInput.checked) {
+    saveSecondaryPasswordInput.value = "";
+    saveSecondaryPasswordConfirmInput.value = "";
+  }
+  renderSavePrompt();
+});
+
+saveEntryNameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingSave();
+  }
+});
+
+saveUsernameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingSave();
+  }
+});
+
+saveMasterPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingSave();
+  }
+});
+
+saveSecondaryPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingSave();
+  }
+});
+
+saveSecondaryPasswordConfirmInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPendingSave();
+  }
+});
 
 masterPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -953,7 +1510,9 @@ secondaryPasswordInput.addEventListener("keydown", (event) => {
   }
 });
 
+clearPendingSave();
 renderPasswordPrompt();
+renderSavePrompt();
 updateFillButtonState();
 primeCurrentSite();
 refreshStatus();
