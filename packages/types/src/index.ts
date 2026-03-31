@@ -91,6 +91,14 @@ export type PopupCapturedLoginResponse = {
     password: string;
     url: string;
   };
+  usedStoredUsername?: boolean;
+};
+
+export type PopupCapturedLoginStepResponse = {
+  type: "captured_login_step";
+  step: "username_only";
+  username: string;
+  url: string;
 };
 
 export type PopupGeneratedPasswordResponse = {
@@ -193,6 +201,7 @@ export type PopupToBackgroundResponse =
       response:
         | NativeHostResponse
         | PopupCapturedLoginResponse
+        | PopupCapturedLoginStepResponse
         | PopupGeneratedPasswordResponse
         | PopupFillResultResponse
         | PopupSaveResultResponse;

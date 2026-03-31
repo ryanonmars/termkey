@@ -9,11 +9,17 @@ import type {
 } from "@termkey/types";
 
 const NATIVE_HOST_NAME = "com.ryanonmars.termkey";
+const PENDING_SAVE_KEY_PREFIX = "pending-save:";
 let nativePort: any | undefined;
 let currentNativeResponseHandler:
   | ((response: PopupToBackgroundResponse) => void)
   | undefined;
 let nativeRequestQueue: Promise<void> = Promise.resolve();
+
+type PendingSaveDraft = {
+  username: string;
+  url: string;
+};
 
 function isMissingContentScriptError(message: string | undefined) {
   if (!message) {
@@ -87,6 +93,57 @@ async function getCurrentTabId(): Promise<number> {
 
   return tabId;
 }
+
+function getPendingSaveKey(tabId: number) {
+  return `${PENDING_SAVE_KEY_PREFIX}${tabId}`;
+}
+
+function getSessionStorageArea() {
+  return chrome.storage?.session ?? chrome.storage.local;
+}
+
+function readPendingSaveDraft(tabId: number): Promise<PendingSaveDraft | null> {
+  return new Promise((resolve) => {
+    getSessionStorageArea().get([getPendingSaveKey(tabId)], (result: Record<string, unknown>) => {
+      resolve((result?.[getPendingSaveKey(tabId)] as PendingSaveDraft | undefined) ?? null);
+    });
+  });
+}
+
+function writePendingSaveDraft(tabId: number, draft: PendingSaveDraft): Promise<void> {
+  return new Promise((resolve) => {
+    getSessionStorageArea().set({ [getPendingSaveKey(tabId)]: draft }, () => resolve());
+  });
+}
+
+function clearPendingSaveDraft(tabId: number): Promise<void> {
+  return new Promise((resolve) => {
+    getSessionStorageArea().remove(getPendingSaveKey(tabId), () => resolve());
+  });
+}
+
+function hostFromUrl(url: string) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function canReusePendingSaveDraft(currentUrl: string, draft: PendingSaveDraft | null) {
+  if (!draft) {
+    return false;
+  }
+
+  const currentHost = hostFromUrl(currentUrl);
+  const draftHost = hostFromUrl(draft.url);
+
+  return Boolean(currentHost && draftHost && currentHost === draftHost);
+}
+
+chrome.tabs.onRemoved.addListener((tabId: number) => {
+  void clearPendingSaveDraft(tabId);
+});
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("TermKey extension installed");
@@ -217,27 +274,31 @@ chrome.runtime.onMessage.addListener(
             sendMessageToTab<{
               ok: boolean;
               error?: string;
+              captureState?: "complete" | "password_only" | "username_only";
               username?: string | null;
               password?: string;
             }>(tabId, {
               type: "termkey.captureVisibleCredentials",
-            }).then((captureResponse) => ({ captureResponse, url }))
+            }).then((captureResponse) => ({ captureResponse, tabId, url }))
           )
         )
         .then(
           ({
             captureResponse,
+            tabId,
             url,
           }: {
             captureResponse: {
               ok: boolean;
               error?: string;
+              captureState?: "complete" | "password_only" | "username_only";
               username?: string | null;
               password?: string;
             };
+            tabId: number;
             url: string;
           }) => {
-            if (!captureResponse?.ok || !captureResponse.password) {
+            if (!captureResponse?.ok) {
               sendResponse({
                 ok: false,
                 error:
@@ -247,16 +308,56 @@ chrome.runtime.onMessage.addListener(
               return;
             }
 
-            sendResponse({
-              ok: true,
-              response: {
-                type: "captured_login",
-                candidate: {
-                  username: captureResponse.username ?? null,
-                  password: captureResponse.password,
-                  url,
-                },
-              },
+            if (
+              captureResponse.captureState === "username_only" &&
+              captureResponse.username
+            ) {
+              void writePendingSaveDraft(tabId, {
+                username: captureResponse.username,
+                url,
+              }).then(() => {
+                sendResponse({
+                  ok: true,
+                  response: {
+                    type: "captured_login_step",
+                    step: "username_only",
+                    username: captureResponse.username!,
+                    url,
+                  },
+                });
+              });
+              return;
+            }
+
+            if (!captureResponse.password) {
+              sendResponse({
+                ok: false,
+                error: "Could not read the current login password from this page.",
+              });
+              return;
+            }
+
+            void readPendingSaveDraft(tabId).then((draft) => {
+              const useStoredUsername =
+                !captureResponse.username && canReusePendingSaveDraft(url, draft);
+              const mergedUsername = useStoredUsername
+                ? draft?.username ?? null
+                : captureResponse.username ?? null;
+
+              void clearPendingSaveDraft(tabId).then(() => {
+                sendResponse({
+                  ok: true,
+                  response: {
+                    type: "captured_login",
+                    candidate: {
+                      username: mergedUsername,
+                      password: captureResponse.password!,
+                      url,
+                    },
+                    usedStoredUsername: useStoredUsername,
+                  },
+                });
+              });
             });
           }
         )

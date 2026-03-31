@@ -3,6 +3,7 @@ declare const chrome: any;
 import type {
   NativeHostSiteMatch,
   PopupCapturedLoginResponse,
+  PopupCapturedLoginStepResponse,
   PopupFillResultResponse,
   PopupGeneratedPasswordResponse,
   PopupSaveResultResponse,
@@ -1015,6 +1016,16 @@ function beginSave() {
         return;
       }
 
+      if (response.response.type === "captured_login_step") {
+        const partialCapture = response.response as PopupCapturedLoginStepResponse;
+        renderSavePrompt();
+        renderMessage(
+          `Saved ${partialCapture.username} for this sign-in step. Continue to the password page, then click Save again.`,
+          "success"
+        );
+        return;
+      }
+
       if (response.response.type !== "captured_login") {
         renderSavePrompt();
         renderMessage(
@@ -1029,7 +1040,11 @@ function beginSave() {
         captured.candidate,
         `Saving for ${siteDetails.hostname}. The password is taken from the current page only for this request.`
       );
-      renderMessage(`Ready to save a new login for ${siteDetails.hostname}.`);
+      renderMessage(
+        captured.usedStoredUsername
+          ? `Ready to save a new login for ${siteDetails.hostname}. Username restored from the previous sign-in step.`
+          : `Ready to save a new login for ${siteDetails.hostname}.`
+      );
       saveEntryNameInput.focus();
       saveEntryNameInput.select();
     }

@@ -557,8 +557,18 @@ async function fillCredentials(message: FillCredentialsMessage) {
 function captureVisibleCredentials() {
   const inputs = collectInputElements();
   const passwordInput = findBestPasswordInput(inputs);
+  const usernameInput = findBestUsernameInput(inputs, passwordInput);
+  const username = usernameInput?.value.trim() || null;
 
   if (!passwordInput) {
+    if (username) {
+      return {
+        ok: true,
+        captureState: "username_only" as const,
+        username,
+      };
+    }
+
     return {
       ok: false,
       error: "No visible password field was found on this page.",
@@ -566,17 +576,23 @@ function captureVisibleCredentials() {
   }
 
   if (!passwordInput.value) {
+    if (username) {
+      return {
+        ok: true,
+        captureState: "username_only" as const,
+        username,
+      };
+    }
+
     return {
       ok: false,
       error: "Type your password into the page before saving this login.",
     };
   }
 
-  const usernameInput = findBestUsernameInput(inputs, passwordInput);
-  const username = usernameInput?.value.trim() || null;
-
   return {
     ok: true,
+    captureState: username ? ("complete" as const) : ("password_only" as const),
     username,
     password: passwordInput.value,
   };
