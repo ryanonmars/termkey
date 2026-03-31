@@ -9,8 +9,18 @@
     "service_worker": "dist/background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "public/icons/termkey-icon-16.png",
+    "32": "public/icons/termkey-icon-32.png",
+    "48": "public/icons/termkey-icon-48.png",
+    "128": "public/icons/termkey-icon-128.png"
+  },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "public/icons/termkey-icon-16.png",
+      "32": "public/icons/termkey-icon-32.png"
+    }
   },
   "content_scripts": [
     {
