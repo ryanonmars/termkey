@@ -1,0 +1,9 @@
+{
+  "name": "com.ryanonmars.termkey",
+  "description": "TermKey native messaging host",
+  "path": "__PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://__EXTENSION_ID__/"
+  ]
+}

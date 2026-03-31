@@ -56,7 +56,7 @@ jobs:
         run: |
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE "target/${{ matrix.target }}/release"
           $zipPath = Join-Path $env:GITHUB_WORKSPACE "${{ matrix.asset_name }}.zip"
-          $installerScript = Join-Path $env:GITHUB_WORKSPACE "packaging\windows\termkey.iss"
+          $installerScript = Join-Path $env:GITHUB_WORKSPACE "apps\cli\packaging\windows\termkey.iss"
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           $version = $env:VERSION -replace '^v', ''
 
@@ -88,13 +88,13 @@ jobs:
           VERSION_NO_V="${VERSION#v}"
           PACKAGE_NAME="${{ matrix.asset_name }}-installer"
 
-          "${{ github.workspace }}/packaging/macos/create-pkg.sh" \
+          "${{ github.workspace }}/apps/cli/packaging/macos/create-pkg.sh" \
             "${{ github.workspace }}/target/${{ matrix.target }}/release/termkey" \
             "${VERSION_NO_V}" \
             "${PACKAGE_NAME}" \
             "${{ github.workspace }}"
 
-          "${{ github.workspace }}/packaging/macos/create-dmg.sh" \
+          "${{ github.workspace }}/apps/cli/packaging/macos/create-dmg.sh" \
             "${{ github.workspace }}/${PACKAGE_NAME}.pkg" \
             "${{ matrix.asset_name }}" \
             "TermKey ${{ matrix.target }}" \

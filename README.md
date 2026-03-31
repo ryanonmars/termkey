@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/termkey-icon.svg" alt="TermKey" width="420">
+  <img src="apps/cli/assets/branding/termkey-icon.svg" alt="TermKey" width="420">
 </p>
 
 # TermKey
@@ -76,7 +76,7 @@ No admin required. It installs to `%LOCALAPPDATA%\termkey`, adds `termkey` to yo
 PowerShell bootstrap:
 
 ```powershell
-iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/scripts/install.ps1 | iex
+iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/apps/cli/scripts/install.ps1 | iex
 ```
 
 Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)

@@ -1,18 +1,8 @@
-mod cli;
-mod clipboard;
-mod commands;
-mod config;
-mod crypto;
-mod error;
-mod links;
-mod repl;
-mod ui;
-mod vault;
-
 use clap::Parser;
 
-use cli::{Cli, Commands};
-use crypto::secure;
+use termkey::cli::{Cli, Commands};
+use termkey::crypto::secure;
+use termkey::{apply_configured_vault_dir_override, commands, repl, ui, vault};
 
 fn main() {
     secure::harden_process();
@@ -26,16 +16,7 @@ fn main() {
         ui::setup_app_theme(true);
     }
 
-    // Load config and set vault path env var if customized
-    if let Ok(cfg) = config::load_config() {
-        // Only override if user has a custom vault path (not the default)
-        let default_cfg = config::Config::default();
-        if cfg.vault_path != default_cfg.vault_path {
-            if let Some(parent) = std::path::Path::new(&cfg.vault_path).parent() {
-                std::env::set_var("TERMKEY_VAULT_DIR", parent);
-            }
-        }
-    }
+    apply_configured_vault_dir_override();
 
     let result = match cli.command {
         None => repl::run(),
