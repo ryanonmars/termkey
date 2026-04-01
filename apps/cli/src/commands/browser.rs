@@ -168,6 +168,10 @@ fn extension_source_candidates(exe_dir: &Path, current_exe: &Path) -> Vec<PathBu
         candidates.push(resources_dir.join("browser-extension").join("chrome"));
     }
 
+    for prefix in install_prefix_candidates(exe_dir) {
+        candidates.push(prefix.join("share").join("termkey").join("browser-extension").join("chrome"));
+    }
+
     if let Some(repo_root) = repo_root_from_exe(exe_dir) {
         candidates.push(repo_root.join("browser-extension").join("chrome"));
         candidates.push(repo_root.join("apps").join("extension"));
@@ -218,6 +222,11 @@ fn native_host_binary_candidates(exe_dir: &Path, current_exe: &Path) -> Vec<Path
         candidates.push(resources_dir.join("bin").join(binary_name));
     }
 
+    for prefix in install_prefix_candidates(exe_dir) {
+        candidates.push(prefix.join("libexec").join(binary_name));
+        candidates.push(prefix.join("share").join("termkey").join("bin").join(binary_name));
+    }
+
     if let Some(repo_root) = repo_root_from_exe(exe_dir) {
         candidates.push(repo_root.join("target").join("debug").join(binary_name));
         candidates.push(repo_root.join("target").join("release").join(binary_name));
@@ -241,6 +250,16 @@ fn repo_root_from_exe(exe_dir: &Path) -> Option<PathBuf> {
     }
 
     Some(target_dir.parent()?.to_path_buf())
+}
+
+fn install_prefix_candidates(exe_dir: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(prefix) = exe_dir.parent() {
+        candidates.push(prefix.to_path_buf());
+    }
+
+    candidates
 }
 
 fn macos_resources_dir(current_exe: &Path) -> Option<PathBuf> {
