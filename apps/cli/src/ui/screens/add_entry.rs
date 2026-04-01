@@ -523,6 +523,7 @@ impl AddEntryScreen {
             } else {
                 Some(self.url.clone())
             },
+            site_rules: Vec::new(),
             notes: self.notes.clone(),
             created_at: now,
             updated_at: now,

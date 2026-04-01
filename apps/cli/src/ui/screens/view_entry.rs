@@ -231,6 +231,7 @@ mod tests {
             public_address: None,
             username: Some("user".to_string()),
             url: Some("https://example.com".to_string()),
+            site_rules: Vec::new(),
             notes: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -54,6 +54,8 @@ pub struct Entry {
     pub username: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
+    #[serde(default)]
+    pub site_rules: Vec<String>,
     pub notes: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -114,6 +116,8 @@ pub struct EntryMeta {
     pub username: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
+    #[serde(default)]
+    pub site_rules: Vec<String>,
     pub notes: String,
     #[serde(default)]
     pub has_secondary_password: bool,
@@ -197,6 +201,7 @@ impl VaultData {
                 public_address: e.public_address.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
+                site_rules: e.site_rules.clone(),
                 notes: e.notes.clone(),
                 has_secondary_password: e.has_secondary_password,
             })
@@ -234,6 +239,7 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
+            site_rules: Vec::new(),
             notes: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -166,6 +166,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         public_address,
         username,
         url,
+        site_rules: Vec::new(),
         notes: notes.trim().to_string(),
         created_at: now,
         updated_at: now,

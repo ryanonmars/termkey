@@ -262,6 +262,7 @@ mod tests {
             public_address: Some("0x1234567890abcdef".to_string()),
             username: Some("demo-user".to_string()),
             url: Some("https://example.com".to_string()),
+            site_rules: Vec::new(),
             notes: "some notes".to_string(),
             has_secondary_password: false,
         }

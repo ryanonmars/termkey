@@ -788,6 +788,7 @@ mod tests {
             public_address: Some("0x123".to_string()),
             username: Some("user".to_string()),
             url: Some("https://example.com".to_string()),
+            site_rules: Vec::new(),
             notes: "notes".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

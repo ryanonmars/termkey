@@ -417,6 +417,7 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
+            site_rules: Vec::new(),
             notes: "Test note".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
