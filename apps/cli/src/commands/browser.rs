@@ -114,6 +114,20 @@ fn managed_extension_dir() -> PathBuf {
         }
     }
 
+    #[cfg(windows)]
+    {
+        if let Some(home) = current_user_home_dir() {
+            return home.join("TermKey Browser Extension");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(home) = current_user_home_dir() {
+            return home.join("TermKey Browser Extension");
+        }
+    }
+
     crate::vault::storage::vault_dir()
         .join("browser")
         .join("chrome-extension")
@@ -356,13 +370,13 @@ fn native_host_manifest_path() -> Result<PathBuf> {
 
     #[cfg(windows)]
     {
-        let local_app_data = std::env::var("LOCALAPPDATA").map_err(|_| {
+        let local_app_data = local_app_data_dir().ok_or_else(|| {
             TermKeyError::ConfigError(
                 "Could not determine LOCALAPPDATA for Chrome native host registration.".into(),
             )
         })?;
 
-        return Ok(PathBuf::from(local_app_data)
+        return Ok(local_app_data
             .join("TermKey")
             .join("ChromeNativeMessagingHosts")
             .join(format!("{CHROME_NATIVE_HOST_NAME}.json")));
@@ -379,6 +393,11 @@ fn current_user_home_dir() -> Option<PathBuf> {
         .or_else(|_| std::env::var("USERPROFILE"))
         .ok()
         .map(PathBuf::from)
+}
+
+#[cfg(windows)]
+fn local_app_data_dir() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA").ok().map(PathBuf::from)
 }
 
 fn native_host_manifest_status(manifest_path: &Path) -> Result<String> {

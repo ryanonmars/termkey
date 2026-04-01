@@ -148,7 +148,25 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  LocalAppData: String;
+  UserProfile: String;
 begin
   if CurUninstallStep = usUninstall then
+  begin
     UpdateUserPath(False);
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Google\Chrome\NativeMessagingHosts\com.ryanonmars.termkey');
+
+    LocalAppData := GetEnv('LOCALAPPDATA');
+    if LocalAppData <> '' then
+      DelTree(AddBackslash(LocalAppData) + 'TermKey\ChromeNativeMessagingHosts', True, True, True);
+
+    UserProfile := GetEnv('USERPROFILE');
+    if UserProfile <> '' then
+    begin
+      DelTree(AddBackslash(UserProfile) + 'TermKey Browser Extension', True, True, True);
+      DelTree(AddBackslash(UserProfile) + '.termkey\browser\chrome-extension', True, True, True);
+      DelTree(AddBackslash(UserProfile) + '.cryptokeeper\browser\chrome-extension', True, True, True);
+    end;
+  end;
 end;

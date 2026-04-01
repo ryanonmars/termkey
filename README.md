@@ -105,6 +105,14 @@ termkey browser repair
 
 `termkey browser install` copies the bundled extension into a stable user folder, installs the Chrome native-host manifest, and prints the exact folder to load in Chrome.
 
+Default extension folder by platform:
+
+- macOS: `~/Applications/TermKey Browser Extension`
+- Linux: `~/TermKey Browser Extension`
+- Windows: `%USERPROFILE%\TermKey Browser Extension`
+
+`termkey browser install` prints the exact path on the current machine, so users do not need to discover it manually.
+
 ---
 
 ## How It Works
