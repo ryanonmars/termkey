@@ -85,6 +85,28 @@ Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/late
 
 ---
 
+## Chrome Extension Setup
+
+TermKey can ship its Chrome integration alongside the app download, but Chrome still requires a manual **Load unpacked** step for non-store extensions.
+
+1. Run `termkey browser install`
+2. Open `chrome://extensions`
+3. Turn on **Developer mode**
+4. Click **Load unpacked**
+5. Select the folder printed by the command
+
+Useful commands:
+
+```bash
+termkey browser install
+termkey browser status
+termkey browser repair
+```
+
+`termkey browser install` copies the bundled extension into a stable user folder, installs the Chrome native-host manifest, and prints the exact folder to load in Chrome.
+
+---
+
 ## How It Works
 
 Run `termkey` with no subcommand to open the TUI.
@@ -137,6 +159,9 @@ termkey passwd
 termkey recover
 termkey config --show
 termkey derive <name-or-index>
+termkey browser install
+termkey browser status
+termkey browser repair
 ```
 
 Notes:

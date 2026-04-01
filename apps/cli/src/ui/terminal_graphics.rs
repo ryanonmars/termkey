@@ -130,7 +130,10 @@ fn auto_detect_protocol() -> Option<GraphicsProtocol> {
 }
 
 fn icon_payload() -> String {
-    ICON_PNG_BASE64.chars().filter(|ch| !ch.is_whitespace()).collect()
+    ICON_PNG_BASE64
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect()
 }
 
 fn print_kitty_image(

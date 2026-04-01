@@ -56,17 +56,14 @@ fn run_with_meta(meta: &[EntryMeta], query: &str) -> Result<()> {
         })
         .collect();
 
-    let col_styles: Vec<fn(&str) -> ColoredString> = vec![
-        |s| s.dimmed(),
-        |s| s.cyan(),
-        |s| match s {
+    let col_styles: Vec<fn(&str) -> ColoredString> =
+        vec![|s| s.dimmed(), |s| s.cyan(), |s| match s {
             "Private Key" => s.yellow(),
             "Seed Phrase" => s.magenta(),
             "Password" => s.green(),
             "Other" => s.blue(),
             _ => s.normal(),
-        },
-    ];
+        }];
 
     let title = format!("Search: '{}' ({} found)", query, matches.len());
     println!();

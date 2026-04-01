@@ -35,6 +35,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build browser extension
+        run: npm run build:extension
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,21 +70,44 @@ jobs:
           $installerScript = Join-Path $env:GITHUB_WORKSPACE "apps\cli\packaging\windows\termkey.iss"
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           $version = $env:VERSION -replace '^v', ''
+          $stagingDir = Join-Path $env:RUNNER_TEMP "${{ matrix.asset_name }}-bundle"
+          $extensionDir = Join-Path $stagingDir "browser-extension\chrome"
 
           if (-not (Test-Path $iscc)) {
             throw "Inno Setup compiler not found at $iscc"
           }
 
-          Compress-Archive -Path (Join-Path $releaseDir "termkey.exe") -DestinationPath $zipPath
-          & $iscc "/DAppVersion=$version" "/DSourceDir=$releaseDir" "/DOutputDir=$env:GITHUB_WORKSPACE" $installerScript
+          Remove-Item -Recurse -Force $stagingDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $extensionDir | Out-Null
+
+          Copy-Item (Join-Path $releaseDir "termkey.exe") $stagingDir
+          Copy-Item (Join-Path $releaseDir "termkey-native-host.exe") $stagingDir
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "apps\extension\manifest.json") (Join-Path $extensionDir "manifest.json")
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "apps\extension\popup.html") (Join-Path $extensionDir "popup.html")
+          Copy-Item -Recurse -Force (Join-Path $env:GITHUB_WORKSPACE "apps\extension\dist") (Join-Path $extensionDir "dist")
+          Copy-Item -Recurse -Force (Join-Path $env:GITHUB_WORKSPACE "apps\extension\public") (Join-Path $extensionDir "public")
+
+          Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath
+          & $iscc "/DAppVersion=$version" "/DSourceDir=$stagingDir" "/DOutputDir=$env:GITHUB_WORKSPACE" $installerScript
 
       - name: Prepare asset (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          zip ${{ matrix.asset_name }}.zip termkey
-          mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
+          release_dir="${{ github.workspace }}/target/${{ matrix.target }}/release"
+          staging_dir=$(mktemp -d)
+          trap 'rm -rf "$staging_dir"' EXIT
+
+          mkdir -p "$staging_dir/browser-extension/chrome"
+          cp "$release_dir/termkey" "$staging_dir/termkey"
+          cp "$release_dir/termkey-native-host" "$staging_dir/termkey-native-host"
+          cp "${{ github.workspace }}/apps/extension/manifest.json" "$staging_dir/browser-extension/chrome/manifest.json"
+          cp "${{ github.workspace }}/apps/extension/popup.html" "$staging_dir/browser-extension/chrome/popup.html"
+          cp -R "${{ github.workspace }}/apps/extension/dist" "$staging_dir/browser-extension/chrome/dist"
+          cp -R "${{ github.workspace }}/apps/extension/public" "$staging_dir/browser-extension/chrome/public"
+
+          cd "$staging_dir"
+          zip -r "${{ github.workspace }}/${{ matrix.asset_name }}.zip" termkey termkey-native-host browser-extension
 
       - name: Prepare asset (macOS)
         if: matrix.os == 'macos-latest'
@@ -81,13 +115,26 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          cd target/${{ matrix.target }}/release
-          zip ${{ matrix.asset_name }}.zip termkey
-          mv ${{ matrix.asset_name }}.zip ${{ github.workspace }}/
+          release_dir="${{ github.workspace }}/target/${{ matrix.target }}/release"
+          staging_dir=$(mktemp -d)
+          trap 'rm -rf "$staging_dir"' EXIT
+
+          mkdir -p "$staging_dir/browser-extension/chrome"
+          cp "$release_dir/termkey" "$staging_dir/termkey"
+          cp "$release_dir/termkey-native-host" "$staging_dir/termkey-native-host"
+          cp "${{ github.workspace }}/apps/extension/manifest.json" "$staging_dir/browser-extension/chrome/manifest.json"
+          cp "${{ github.workspace }}/apps/extension/popup.html" "$staging_dir/browser-extension/chrome/popup.html"
+          cp -R "${{ github.workspace }}/apps/extension/dist" "$staging_dir/browser-extension/chrome/dist"
+          cp -R "${{ github.workspace }}/apps/extension/public" "$staging_dir/browser-extension/chrome/public"
+
+          cd "$staging_dir"
+          zip -r "${{ github.workspace }}/${{ matrix.asset_name }}.zip" termkey termkey-native-host browser-extension
 
           VERSION_NO_V="${VERSION#v}"
           PACKAGE_NAME="${{ matrix.asset_name }}-installer"
 
+          TERMKEY_NATIVE_HOST_BINARY="${release_dir}/termkey-native-host" \
+          TERMKEY_EXTENSION_DIR="$staging_dir/browser-extension/chrome" \
           "${{ github.workspace }}/apps/cli/packaging/macos/create-pkg.sh" \
             "${{ github.workspace }}/target/${{ matrix.target }}/release/termkey" \
             "${VERSION_NO_V}" \

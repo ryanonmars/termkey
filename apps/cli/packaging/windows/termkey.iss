@@ -36,6 +36,8 @@ WizardStyle=modern
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\termkey-native-host.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\browser-extension\*"; DestDir: "{app}\browser-extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ScriptDir + IconFileName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Code]

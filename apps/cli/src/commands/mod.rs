@@ -1,4 +1,5 @@
 pub mod add;
+pub mod browser;
 pub mod config_cmd;
 pub mod copy;
 pub mod delete;

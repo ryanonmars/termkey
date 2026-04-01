@@ -98,4 +98,22 @@ pub enum Commands {
         /// Name or index number of the entry
         name: String,
     },
+
+    /// Install or inspect browser integration support
+    Browser {
+        #[command(subcommand)]
+        command: BrowserCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BrowserCommands {
+    /// Install or refresh the bundled Chrome integration files
+    Install,
+
+    /// Show the current browser integration status
+    Status,
+
+    /// Reinstall the browser integration files
+    Repair,
 }

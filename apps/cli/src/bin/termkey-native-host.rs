@@ -4,9 +4,9 @@ use std::net::IpAddr;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use termkey::vault::model::EntryMeta;
-use zeroize::Zeroizing;
-use termkey::{apply_configured_vault_dir_override, config, crypto, vault};
 use termkey::vault::model::{Entry, SecretType};
+use termkey::{apply_configured_vault_dir_override, config, crypto, vault};
+use zeroize::Zeroizing;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -22,7 +22,9 @@ enum NativeRequest {
         #[serde(alias = "secondaryPassword")]
         secondary_password: Option<String>,
     },
-    FindSiteMatches { url: String },
+    FindSiteMatches {
+        url: String,
+    },
     SavePasswordEntry {
         name: String,
         #[serde(default)]
@@ -38,7 +40,9 @@ enum NativeRequest {
         secondary_password: Option<String>,
     },
     ListEntries,
-    Unlock { password: String },
+    Unlock {
+        password: String,
+    },
 }
 
 #[derive(Default)]
@@ -112,15 +116,30 @@ struct AutofillEntryResponse {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum NativeResponse {
-    Pong { app: &'static str, version: &'static str },
+    Pong {
+        app: &'static str,
+        version: &'static str,
+    },
     Status(StatusResponse),
-    GeneratedPassword { password: String },
-    AutofillEntry { entry: AutofillEntryResponse },
-    SaveEntry { entry_name: String },
+    GeneratedPassword {
+        password: String,
+    },
+    AutofillEntry {
+        entry: AutofillEntryResponse,
+    },
+    SaveEntry {
+        entry_name: String,
+    },
     SiteMatches(SiteMatchesResponse),
-    ListEntries { entries: Vec<EntrySummary> },
-    Unlock { unlocked: bool },
-    Error { message: String },
+    ListEntries {
+        entries: Vec<EntrySummary>,
+    },
+    Unlock {
+        unlocked: bool,
+    },
+    Error {
+        message: String,
+    },
 }
 
 fn load_status_for_state(state: &HostState) -> StatusResponse {
@@ -223,7 +242,11 @@ fn summarize_entry(index: usize, entry: &Entry) -> EntrySummary {
     }
 }
 
-fn summarize_site_match(index: usize, entry: &EntryMeta, match_type: &'static str) -> SiteMatchSummary {
+fn summarize_site_match(
+    index: usize,
+    entry: &EntryMeta,
+    match_type: &'static str,
+) -> SiteMatchSummary {
     SiteMatchSummary {
         id: (index + 1).to_string(),
         name: entry.name.clone(),
@@ -267,10 +290,7 @@ fn parse_site(input: &str) -> Option<ParsedSite> {
         let closing = host_port.find(']')?;
         host_port[..=closing].to_ascii_lowercase()
     } else {
-        host_port
-            .split(':')
-            .next()
-            .map(str::to_ascii_lowercase)?
+        host_port.split(':').next().map(str::to_ascii_lowercase)?
     };
     let has_explicit_port = if host_port.starts_with('[') {
         host_port[hostname.len()..].starts_with(':')
@@ -279,7 +299,10 @@ fn parse_site(input: &str) -> Option<ParsedSite> {
     };
 
     Some(ParsedSite {
-        origin: format!("{scheme}://{}", authority_without_userinfo.to_ascii_lowercase()),
+        origin: format!(
+            "{scheme}://{}",
+            authority_without_userinfo.to_ascii_lowercase()
+        ),
         registrable_domain: registrable_domain(&hostname),
         hostname,
         has_explicit_port,
@@ -291,38 +314,22 @@ fn registrable_domain(hostname: &str) -> Option<String> {
         return None;
     }
 
-    let labels: Vec<&str> = hostname.split('.').filter(|label| !label.is_empty()).collect();
+    let labels: Vec<&str> = hostname
+        .split('.')
+        .filter(|label| !label.is_empty())
+        .collect();
     if labels.len() < 2 {
         return None;
     }
 
     const MULTI_LABEL_SUFFIXES: &[&str] = &[
-        "co.uk",
-        "org.uk",
-        "ac.uk",
-        "gov.uk",
-        "co.jp",
-        "com.au",
-        "net.au",
-        "org.au",
-        "co.nz",
-        "com.br",
-        "com.mx",
-        "co.in",
-        "com.sg",
-        "com.tr",
-        "com.cn",
-        "com.hk",
-        "com.tw",
+        "co.uk", "org.uk", "ac.uk", "gov.uk", "co.jp", "com.au", "net.au", "org.au", "co.nz",
+        "com.br", "com.mx", "co.in", "com.sg", "com.tr", "com.cn", "com.hk", "com.tw",
     ];
 
     let suffix = format!("{}.{}", labels[labels.len() - 2], labels[labels.len() - 1]);
     if MULTI_LABEL_SUFFIXES.contains(&suffix.as_str()) && labels.len() >= 3 {
-        return Some(
-            labels[labels.len() - 3..]
-                .join(".")
-                .to_ascii_lowercase(),
-        );
+        return Some(labels[labels.len() - 3..].join(".").to_ascii_lowercase());
     }
 
     Some(labels[labels.len() - 2..].join(".").to_ascii_lowercase())
@@ -389,7 +396,8 @@ fn effective_site_rules(entry: &EntryMeta) -> Vec<SiteRule> {
     let rules = if entry.site_rules.is_empty() {
         derive_default_site_rules(entry.url.as_deref())
     } else {
-        entry.site_rules
+        entry
+            .site_rules
             .iter()
             .filter_map(|rule| parse_site_rule(rule))
             .collect()
@@ -500,7 +508,8 @@ fn list_entries(state: &HostState) -> NativeResponse {
         Err(response) => return response,
     };
 
-    let vault = match vault::storage::read_vault(password.as_bytes(), &vault::storage::vault_path()) {
+    let vault = match vault::storage::read_vault(password.as_bytes(), &vault::storage::vault_path())
+    {
         Ok(vault) => vault,
         Err(err) => {
             return NativeResponse::Error {
@@ -519,7 +528,10 @@ fn list_entries(state: &HostState) -> NativeResponse {
     NativeResponse::ListEntries { entries }
 }
 
-fn resolve_vault_password(state: &HostState, password: Option<String>) -> Result<String, NativeResponse> {
+fn resolve_vault_password(
+    state: &HostState,
+    password: Option<String>,
+) -> Result<String, NativeResponse> {
     let password = match password {
         Some(password) => password,
         None => match require_unlocked_password(state) {
@@ -546,13 +558,19 @@ fn read_vault_with_password(password: &str) -> Result<vault::model::VaultData, N
     }
 }
 
-fn read_vault_for_autofill(state: &HostState, password: Option<String>) -> Result<vault::model::VaultData, NativeResponse> {
+fn read_vault_for_autofill(
+    state: &HostState,
+    password: Option<String>,
+) -> Result<vault::model::VaultData, NativeResponse> {
     let password = resolve_vault_password(state, password)?;
 
     read_vault_with_password(&password)
 }
 
-fn decrypt_secondary_password_entry(entry: &Entry, secondary_password: &str) -> Result<Zeroizing<String>, NativeResponse> {
+fn decrypt_secondary_password_entry(
+    entry: &Entry,
+    secondary_password: &str,
+) -> Result<Zeroizing<String>, NativeResponse> {
     let wrapped = entry
         .entry_key_wrapped
         .as_ref()
@@ -577,20 +595,16 @@ fn decrypt_secondary_password_entry(entry: &Entry, secondary_password: &str) -> 
         .ok_or_else(|| NativeResponse::Error {
             message: "This entry requires a secondary password to view.".to_string(),
         })?;
-    let ciphertext_nonce = entry
-        .encrypted_secret_nonce
-        .as_ref()
-        .ok_or_else(|| NativeResponse::Error {
-            message: "This entry requires a secondary password to view.".to_string(),
-        })?;
+    let ciphertext_nonce =
+        entry
+            .encrypted_secret_nonce
+            .as_ref()
+            .ok_or_else(|| NativeResponse::Error {
+                message: "This entry requires a secondary password to view.".to_string(),
+            })?;
 
-    let entry_key = crypto::entry_key::unwrap_entry_key(
-        wrapped,
-        nonce,
-        salt,
-        secondary_password,
-    )
-    .map_err(|err| NativeResponse::Error {
+    let entry_key = crypto::entry_key::unwrap_entry_key(wrapped, nonce, salt, secondary_password)
+        .map_err(|err| NativeResponse::Error {
         message: err.to_string(),
     })?;
 
@@ -712,11 +726,11 @@ fn build_password_entry(
                 }
             })?;
         let (entry_key_wrapped, entry_key_nonce, entry_key_salt) =
-            crypto::entry_key::wrap_entry_key(&entry_key, &secondary_password).map_err(
-                |err| NativeResponse::Error {
+            crypto::entry_key::wrap_entry_key(&entry_key, &secondary_password).map_err(|err| {
+                NativeResponse::Error {
                     message: err.to_string(),
-                },
-            )?;
+                }
+            })?;
 
         (
             true,
@@ -785,8 +799,11 @@ fn save_password_entry(
     let entry_name = entry.name.clone();
     vault.entries.push(entry);
 
-    match vault::storage::write_vault(&vault, vault_password.as_bytes(), &vault::storage::vault_path())
-    {
+    match vault::storage::write_vault(
+        &vault,
+        vault_password.as_bytes(),
+        &vault::storage::vault_path(),
+    ) {
         Ok(()) => NativeResponse::SaveEntry { entry_name },
         Err(err) => NativeResponse::Error {
             message: err.to_string(),
@@ -859,8 +876,8 @@ fn main() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_site_rule_match, handle_request, load_status_for_state, parse_site,
-        read_message, write_message, HostState, NativeResponse, SiteRule,
+        classify_site_rule_match, handle_request, load_status_for_state, parse_site, read_message,
+        write_message, HostState, NativeResponse, SiteRule,
     };
     use chrono::Utc;
     use std::io::Cursor;
@@ -1032,7 +1049,10 @@ mod tests {
 
     #[test]
     fn generate_password_returns_generated_password() {
-        let response = handle_request(&mut HostState::default(), br#"{"type":"generate_password"}"#);
+        let response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"generate_password"}"#,
+        );
 
         match response {
             NativeResponse::GeneratedPassword { password } => {
@@ -1080,7 +1100,10 @@ mod tests {
             None => std::env::remove_var("TERMKEY_VAULT_DIR"),
         }
 
-        assert!(matches!(response, NativeResponse::Unlock { unlocked: true }));
+        assert!(matches!(
+            response,
+            NativeResponse::Unlock { unlocked: true }
+        ));
     }
 
     #[test]
@@ -1095,7 +1118,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_entry(), b"correct horse battery staple", &path).unwrap();
+        write_vault(
+            &test_vault_with_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1125,7 +1153,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_entry(), b"correct horse battery staple", &path).unwrap();
+        write_vault(
+            &test_vault_with_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1155,8 +1188,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_domain_rule_entry(), b"correct horse battery staple", &path)
-            .unwrap();
+        write_vault(
+            &test_vault_with_domain_rule_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1282,7 +1319,10 @@ mod tests {
             saved_vault.entries[0].username.as_deref(),
             Some("ryan@example.com")
         );
-        assert_eq!(saved_vault.entries[0].url.as_deref(), Some("https://example.com/login"));
+        assert_eq!(
+            saved_vault.entries[0].url.as_deref(),
+            Some("https://example.com/login")
+        );
         assert_eq!(saved_vault.entries[0].secret, "super-secret");
         assert!(!saved_vault.entries[0].has_secondary_password);
     }
@@ -1327,7 +1367,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_entry(), b"correct horse battery staple", &path).unwrap();
+        write_vault(
+            &test_vault_with_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1357,8 +1402,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_secondary_entry(), b"correct horse battery staple", &path)
-            .unwrap();
+        write_vault(
+            &test_vault_with_secondary_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1386,8 +1435,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_secondary_entry(), b"correct horse battery staple", &path)
-            .unwrap();
+        write_vault(
+            &test_vault_with_secondary_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1416,8 +1469,12 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
-        write_vault(&test_vault_with_secondary_entry(), b"correct horse battery staple", &path)
-            .unwrap();
+        write_vault(
+            &test_vault_with_secondary_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
 
         let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
         std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
@@ -1459,9 +1516,18 @@ mod tests {
         let subdomain = SiteRule::ExactHost("example.com".to_string());
         let registrable_domain = SiteRule::RegistrableDomain("example.com".to_string());
 
-        assert_eq!(classify_site_rule_match(&current, &exact_origin), Some("exact_origin"));
-        assert_eq!(classify_site_rule_match(&current, &exact_host), Some("exact_host"));
-        assert_eq!(classify_site_rule_match(&current, &subdomain), Some("subdomain"));
+        assert_eq!(
+            classify_site_rule_match(&current, &exact_origin),
+            Some("exact_origin")
+        );
+        assert_eq!(
+            classify_site_rule_match(&current, &exact_host),
+            Some("exact_host")
+        );
+        assert_eq!(
+            classify_site_rule_match(&current, &subdomain),
+            Some("subdomain")
+        );
         assert_eq!(
             classify_site_rule_match(&current, &registrable_domain),
             Some("registrable_domain")

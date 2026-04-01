@@ -42,6 +42,7 @@ fn main() {
                 ref clipboard_timeout,
             } => commands::config_cmd::run(show, *clipboard_timeout),
             Commands::Derive { ref name } => commands::derive::run(name),
+            Commands::Browser { ref command } => commands::browser::run(command),
         },
     };
 
