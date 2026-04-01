@@ -18,8 +18,8 @@ Uninstall
 ---------
 
 To remove the installer-based app later, open Uninstall TermKey.app from /Applications.
-It removes the app bundle, the CLI binary, and the installer receipt. Your ~/.termkey
-vault data is left untouched.
+It removes the app bundle, the CLI binaries, the Chrome integration files installed by
+TermKey, and the installer receipt. Your ~/.termkey vault data is left untouched.
 
 Manual install
 --------------

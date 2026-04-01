@@ -22,7 +22,7 @@ func confirmUninstall() -> Bool {
     alert.alertStyle = .warning
     alert.messageText = "Remove TermKey from this Mac?"
     alert.informativeText = """
-    This removes TermKey.app, the termkey command line tool, and the installer receipt.
+    This removes TermKey.app, the termkey command line tools, Chrome integration files installed by TermKey, and the installer receipt.
     Your encrypted vault in ~/.termkey is not deleted.
     """
     alert.addButton(withTitle: "Uninstall")
@@ -49,8 +49,20 @@ guard confirmUninstall() else {
 }
 
 let uninstallAppPath = Bundle.main.bundleURL.path
+let homeDirectory = NSHomeDirectory()
+let chromeNativeHostManifestPath =
+    "\(homeDirectory)/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.ryanonmars.termkey.json"
+let managedExtensionPath = "\(homeDirectory)/Applications/TermKey Browser Extension"
+let legacyExtensionPaths = [
+    "\(homeDirectory)/.termkey/browser/chrome-extension",
+    "\(homeDirectory)/.cryptokeeper/browser/chrome-extension",
+]
 let shellCommand = [
     "/bin/rm -f \(shellQuote("/usr/local/bin/termkey"))",
+    "/bin/rm -f \(shellQuote("/usr/local/bin/termkey-native-host"))",
+    "/bin/rm -f \(shellQuote(chromeNativeHostManifestPath))",
+    "/bin/rm -rf \(shellQuote(managedExtensionPath))",
+    legacyExtensionPaths.map { "/bin/rm -rf \(shellQuote($0))" }.joined(separator: "; "),
     "/bin/rm -rf \(shellQuote("/Applications/TermKey.app"))",
     "/usr/sbin/pkgutil --forget \(shellQuote("com.ryanonmars.termkey")) >/dev/null 2>&1 || true",
     "/bin/rm -rf \(shellQuote(uninstallAppPath))",
@@ -77,4 +89,4 @@ if let error {
     fail(message)
 }
 
-info("TermKey was removed. Your vault data in ~/.termkey was left untouched.")
+info("TermKey and its browser integration files were removed. Your vault data in ~/.termkey was left untouched.")
