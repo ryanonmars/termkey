@@ -1,0 +1,17 @@
+{
+  "name": "termkey",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:core": "node ./node_modules/typescript/bin/tsc --project packages/core/tsconfig.json",
+    "build:types": "node ./node_modules/typescript/bin/tsc --project packages/types/tsconfig.json",
+    "build:extension": "node ./node_modules/typescript/bin/tsc --project packages/core/tsconfig.json && node ./node_modules/typescript/bin/tsc --project packages/types/tsconfig.json && node ./node_modules/typescript/bin/tsc --project apps/extension/tsconfig.json && node apps/extension/scripts/postbuild.mjs",
+    "build:native-host": "cargo build -p termkey --bin termkey-native-host"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/termkey-icon.svg" alt="TermKey" width="420">
+  <img src="apps/cli/assets/branding/termkey-icon.svg" alt="TermKey" width="420">
 </p>
 
 # TermKey
@@ -39,7 +39,7 @@ brew install ryanonmars/termkey/termkey
 
 **Direct ZIP download:** [Apple Silicon (ARM64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.zip) · [Intel (x86_64)](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x86_64.zip)
 
-The macOS installer adds `TermKey.app` and `Uninstall TermKey.app` to `/Applications` and also installs the `termkey` CLI to `/usr/local/bin`. To remove the installer-based version later, open `Uninstall TermKey.app` from Applications. Your vault in `~/.termkey` is left untouched.
+The macOS installer adds `TermKey.app` and `Uninstall TermKey.app` to `/Applications` and also installs the `termkey` CLI to `/usr/local/bin`. To remove the installer-based version later, open `Uninstall TermKey.app` from Applications. It also removes the Chrome integration files installed by `termkey browser install`. Your vault in `~/.termkey` is left untouched.
 
 ```bash
 unzip termkey-macos-*.zip
@@ -76,12 +76,34 @@ No admin required. It installs to `%LOCALAPPDATA%\termkey`, adds `termkey` to yo
 PowerShell bootstrap:
 
 ```powershell
-iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/scripts/install.ps1 | iex
+iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/apps/cli/scripts/install.ps1 | iex
 ```
 
 Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)
 
 **SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the `.exe`, open **Properties**, and check **Unblock**.
+
+---
+
+## Chrome Extension Setup
+
+TermKey can ship its Chrome integration alongside the app download, but Chrome still requires a manual **Load unpacked** step for non-store extensions.
+
+1. Run `termkey browser install`
+2. Open `chrome://extensions`
+3. Turn on **Developer mode**
+4. Click **Load unpacked**
+5. Select the folder printed by the command
+
+Useful commands:
+
+```bash
+termkey browser install
+termkey browser status
+termkey browser repair
+```
+
+`termkey browser install` copies the bundled extension into a stable user folder, installs the Chrome native-host manifest, and prints the exact folder to load in Chrome.
 
 ---
 
@@ -137,6 +159,9 @@ termkey passwd
 termkey recover
 termkey config --show
 termkey derive <name-or-index>
+termkey browser install
+termkey browser status
+termkey browser repair
 ```
 
 Notes:
