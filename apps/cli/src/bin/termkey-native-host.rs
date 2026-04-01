@@ -63,6 +63,7 @@ struct ParsedSite {
     origin: String,
     hostname: String,
     registrable_domain: Option<String>,
+    has_explicit_port: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -271,11 +272,17 @@ fn parse_site(input: &str) -> Option<ParsedSite> {
             .next()
             .map(str::to_ascii_lowercase)?
     };
+    let has_explicit_port = if host_port.starts_with('[') {
+        host_port[hostname.len()..].starts_with(':')
+    } else {
+        host_port.contains(':')
+    };
 
     Some(ParsedSite {
         origin: format!("{scheme}://{}", authority_without_userinfo.to_ascii_lowercase()),
         registrable_domain: registrable_domain(&hostname),
         hostname,
+        has_explicit_port,
     })
 }
 
@@ -363,14 +370,15 @@ fn derive_default_site_rules(url: Option<&str>) -> Vec<SiteRule> {
         return Vec::new();
     };
 
-    let mut rules = vec![
-        SiteRule::ExactOrigin(site.origin.clone()),
-        SiteRule::ExactHost(site.hostname.clone()),
-    ];
+    let mut rules = vec![SiteRule::ExactOrigin(site.origin.clone())];
 
-    if let Some(domain) = site.registrable_domain {
-        if domain != site.hostname {
-            rules.push(SiteRule::RegistrableDomain(domain));
+    if !site.has_explicit_port {
+        rules.push(SiteRule::ExactHost(site.hostname.clone()));
+
+        if let Some(domain) = site.registrable_domain {
+            if domain != site.hostname {
+                rules.push(SiteRule::RegistrableDomain(domain));
+            }
         }
     }
 
@@ -949,6 +957,31 @@ mod tests {
         }
     }
 
+    fn test_vault_with_port_specific_entry() -> VaultData {
+        VaultData {
+            entries: vec![Entry {
+                name: "Dashboard".to_string(),
+                secret: "super-secret".to_string(),
+                secret_type: SecretType::Password,
+                network: "Password".to_string(),
+                public_address: None,
+                username: Some("admin".to_string()),
+                url: Some("https://home.ryanonmars.space:3000".to_string()),
+                site_rules: Vec::new(),
+                notes: String::new(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                has_secondary_password: false,
+                entry_key_wrapped: None,
+                entry_key_nonce: None,
+                entry_key_salt: None,
+                encrypted_secret: None,
+                encrypted_secret_nonce: None,
+            }],
+            version: 1,
+        }
+    }
+
     fn test_vault_with_explicit_site_rule_entry() -> VaultData {
         VaultData {
             entries: vec![Entry {
@@ -1176,6 +1209,39 @@ mod tests {
             NativeResponse::SiteMatches(matches) => {
                 assert_eq!(matches.matches.len(), 1);
                 assert_eq!(matches.matches[0].name, "Admin Login");
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn site_matches_do_not_cross_non_default_ports_by_default() {
+        let _guard = env_lock().lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        write_vault(
+            &test_vault_with_port_specific_entry(),
+            b"correct horse battery staple",
+            &path,
+        )
+        .unwrap();
+
+        let previous_vault_dir = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+
+        let response = handle_request(
+            &mut HostState::default(),
+            br#"{"type":"find_site_matches","url":"https://home.ryanonmars.space"}"#,
+        );
+
+        match previous_vault_dir {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+
+        match response {
+            NativeResponse::SiteMatches(matches) => {
+                assert!(matches.matches.is_empty());
             }
             other => panic!("unexpected response: {:?}", other),
         }

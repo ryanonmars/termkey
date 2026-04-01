@@ -21,6 +21,10 @@ type CaptureVisibleCredentialsMessage = {
   type: "termkey.captureVisibleCredentials";
 };
 
+type InspectPageContextMessage = {
+  type: "termkey.inspectPageContext";
+};
+
 type FillAttemptResult = {
   filledFields: number;
   filledUsername: boolean;
@@ -151,6 +155,11 @@ function getCandidateRoot(element: HTMLElement | null | undefined) {
     element?.closest("form, [role='dialog'], dialog, [role='form'], main, section, article") ??
     null
   );
+}
+
+function getCandidateRootText(input: HTMLInputElement) {
+  const root = getCandidateRoot(input);
+  return (root?.textContent ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function getContextBoost(input: HTMLInputElement) {
@@ -356,6 +365,7 @@ function getGeneratedPasswordCandidateScore(input: HTMLInputElement) {
 
   const autocompleteTokens = getAutocompleteTokens(input);
   const descriptor = getInputDescriptor(input);
+  const rootText = getCandidateRootText(input);
   let score = 0;
 
   if (autocompleteTokens.includes("new-password")) {
@@ -363,6 +373,10 @@ function getGeneratedPasswordCandidateScore(input: HTMLInputElement) {
   }
 
   if (/new|create|choose|set|signup|sign.?up|register/.test(descriptor)) {
+    score += 10;
+  }
+
+  if (/create|new|add|invite|register|sign.?up|member|user|account/.test(rootText)) {
     score += 10;
   }
 
@@ -376,6 +390,10 @@ function getGeneratedPasswordCandidateScore(input: HTMLInputElement) {
 
   if (/current|old|existing/.test(descriptor)) {
     score -= 18;
+  }
+
+  if (/sign.?in|log.?in|login/.test(rootText)) {
+    score -= 12;
   }
 
   if (/otp|one.?time|2fa|code|search|coupon|promo/.test(descriptor)) {
@@ -481,6 +499,78 @@ function findGeneratedPasswordTargets(inputs: HTMLInputElement[]) {
     primaryPasswordInput,
     confirmationPasswordInput,
     usernameInput: findBestUsernameInput(inputs, primaryPasswordInput),
+    primaryScore: passwordCandidates[0]?.score ?? Number.NEGATIVE_INFINITY,
+  };
+}
+
+function canGeneratePasswordForInputs(inputs: HTMLInputElement[]) {
+  const targets = findGeneratedPasswordTargets(inputs);
+  return Boolean(
+    targets.primaryPasswordInput &&
+      Number.isFinite(targets.primaryScore) &&
+      targets.primaryScore >= 0
+  );
+}
+
+function hasAutocompleteToken(
+  input: HTMLInputElement,
+  token: "current-password" | "new-password"
+) {
+  return getAutocompleteTokens(input).includes(token);
+}
+
+function looksLikeConfirmationPassword(input: HTMLInputElement) {
+  return /confirm|confirmation|repeat|verify|re-enter|match/.test(
+    getInputDescriptor(input)
+  );
+}
+
+function inferPageIntent(inputs: HTMLInputElement[]) {
+  const visiblePasswordInputs = inputs.filter(
+    (input) => isVisibleInput(input) && getInputType(input) === "password"
+  );
+  const hasPasswordField = visiblePasswordInputs.length > 0;
+  const hasCurrentPassword = visiblePasswordInputs.some((input) =>
+    hasAutocompleteToken(input, "current-password")
+  );
+  const hasNewPassword = visiblePasswordInputs.some((input) =>
+    hasAutocompleteToken(input, "new-password")
+  );
+  const hasConfirmationPasswordField = visiblePasswordInputs.some(
+    looksLikeConfirmationPassword
+  );
+  const hasUsernameField = Boolean(
+    findBestUsernameInput(inputs, findBestPasswordInput(inputs))
+  );
+
+  if (hasCurrentPassword && (hasNewPassword || hasConfirmationPasswordField)) {
+    return {
+      intent: "password_change" as const,
+      hasPasswordField,
+      hasConfirmationPasswordField,
+    };
+  }
+
+  if (hasNewPassword || hasConfirmationPasswordField) {
+    return {
+      intent: "signup" as const,
+      hasPasswordField,
+      hasConfirmationPasswordField,
+    };
+  }
+
+  if (hasPasswordField || hasUsernameField) {
+    return {
+      intent: "login" as const,
+      hasPasswordField,
+      hasConfirmationPasswordField,
+    };
+  }
+
+  return {
+    intent: "unknown" as const,
+    hasPasswordField: false,
+    hasConfirmationPasswordField: false,
   };
 }
 
@@ -632,13 +722,30 @@ function fillGeneratedPassword(message: FillGeneratedPasswordMessage) {
   };
 }
 
+function inspectPageContext() {
+  const inputs = collectInputElements();
+  const passwordInput = findBestPasswordInput(inputs);
+  const usernameInput = findBestUsernameInput(inputs, passwordInput);
+  const inferred = inferPageIntent(inputs);
+
+  return {
+    ok: true,
+    intent: inferred.intent,
+    visibleUsername: usernameInput?.value.trim() || null,
+    hasPasswordField: inferred.hasPasswordField,
+    hasConfirmationPasswordField: inferred.hasConfirmationPasswordField,
+    canGeneratePassword: canGeneratePasswordForInputs(inputs),
+  };
+}
+
 chrome.runtime.onMessage.addListener(
   (
     message:
       | FillCredentialsMessage
       | FillGeneratedPasswordMessage
       | ContentScriptProbeMessage
-      | CaptureVisibleCredentialsMessage,
+      | CaptureVisibleCredentialsMessage
+      | InspectPageContextMessage,
     _sender: unknown,
     sendResponse: (response: unknown) => void
   ) => {
@@ -649,6 +756,11 @@ chrome.runtime.onMessage.addListener(
 
     if (message?.type === "termkey.captureVisibleCredentials") {
       sendResponse(captureVisibleCredentials());
+      return true;
+    }
+
+    if (message?.type === "termkey.inspectPageContext") {
+      sendResponse(inspectPageContext());
       return true;
     }
 

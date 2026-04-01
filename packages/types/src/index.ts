@@ -94,6 +94,25 @@ export type PopupCapturedLoginResponse = {
   usedStoredUsername?: boolean;
 };
 
+export type PopupPageIntent =
+  | "login"
+  | "signup"
+  | "password_change"
+  | "unknown";
+
+export type PopupPageContextResponse = {
+  type: "page_context";
+  context: {
+    intent: PopupPageIntent;
+    visibleUsername: string | null;
+    hasPasswordField: boolean;
+    hasConfirmationPasswordField: boolean;
+    canGeneratePassword: boolean;
+    hasPendingSaveUsername: boolean;
+    pendingUsername: string | null;
+  };
+};
+
 export type PopupCapturedLoginStepResponse = {
   type: "captured_login_step";
   step: "username_only";
@@ -173,6 +192,9 @@ export type PopupToBackgroundMessage =
       type: "termkey.content.captureVisibleCredentials";
     }
   | {
+      type: "termkey.content.inspectPageContext";
+    }
+  | {
       type: "termkey.passwords.generateForPage";
     }
   | {
@@ -201,6 +223,7 @@ export type PopupToBackgroundResponse =
       response:
         | NativeHostResponse
         | PopupCapturedLoginResponse
+        | PopupPageContextResponse
         | PopupCapturedLoginStepResponse
         | PopupGeneratedPasswordResponse
         | PopupFillResultResponse

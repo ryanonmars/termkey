@@ -6,6 +6,7 @@ import type {
   PopupCapturedLoginStepResponse,
   PopupFillResultResponse,
   PopupGeneratedPasswordResponse,
+  PopupPageContextResponse,
   PopupSaveResultResponse,
   PopupToBackgroundMessage,
   PopupToBackgroundResponse,
@@ -97,17 +98,16 @@ document.body.innerHTML = `
     }
 
     .site-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: grid;
       gap: 12px;
     }
 
     .site-actions {
-      display: inline-flex;
+      display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
-      flex-shrink: 0;
+      width: 100%;
     }
 
     .site-label {
@@ -237,23 +237,28 @@ document.body.innerHTML = `
     .fill-button {
       background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
       color: #03120a;
-      min-width: 76px;
       padding: 10px 14px;
     }
 
     .generate-button {
-      min-width: 92px;
       padding: 10px 14px;
       background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
       color: #062033;
     }
 
     .save-button {
-      min-width: 76px;
       padding: 10px 14px;
       background: rgba(15, 23, 42, 0.9);
       color: #dbeafe;
       border: 1px solid rgba(125, 211, 252, 0.26);
+    }
+
+    .fill-button,
+    .generate-button,
+    .save-button {
+      flex: 1 1 calc(50% - 4px);
+      min-width: 0;
+      white-space: nowrap;
     }
 
     .match-fill-button {
@@ -656,6 +661,15 @@ let saveInFlight = false;
 let backendConnected = false;
 let vaultExists = true;
 let hasSupportedPage = true;
+let pageContext: PopupPageContextResponse["context"] = {
+  intent: "unknown",
+  visibleUsername: null,
+  hasPasswordField: false,
+  hasConfirmationPasswordField: false,
+  canGeneratePassword: false,
+  hasPendingSaveUsername: false,
+  pendingUsername: null,
+};
 let siteDetails = {
   hostname: "Waiting for page...",
   summary: "Checking the current tab.",
@@ -665,6 +679,15 @@ function setSiteVisibility(visible: boolean) {
   hasSupportedPage = visible;
   sitePanel.hidden = !visible;
   if (!visible) {
+    setPageContext({
+      intent: "unknown",
+      visibleUsername: null,
+      hasPasswordField: false,
+      hasConfirmationPasswordField: false,
+      canGeneratePassword: false,
+      hasPendingSaveUsername: false,
+      pendingUsername: null,
+    });
     setCurrentSiteMatches([]);
     clearPendingSave();
   }
@@ -735,6 +758,30 @@ function suggestEntryName(hostnameText: string, username: string | null) {
   return hostnameText;
 }
 
+function normalizedUsername(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function hasMatchingSavedUsername(username: string | null | undefined) {
+  const normalized = normalizedUsername(username);
+  if (!normalized) {
+    return false;
+  }
+
+  return currentSiteMatches.some(
+    (match) => normalizedUsername(match.username) === normalized
+  );
+}
+
+function getActionableUsername() {
+  return pageContext.visibleUsername ?? pageContext.pendingUsername;
+}
+
+function setPageContext(context: PopupPageContextResponse["context"]) {
+  pageContext = context;
+  updateFillButtonState();
+}
+
 function stageSaveCandidate(
   candidate: PopupCapturedLoginResponse["candidate"],
   hintText: string
@@ -755,18 +802,34 @@ function stageSaveCandidate(
 
 function updateFillButtonState() {
   const singleMatch = currentSiteMatches.length === 1;
+  const actionableUsername = getActionableUsername();
+  const knownUsername = hasMatchingSavedUsername(actionableUsername);
+  const showGenerateAction = pageContext.canGeneratePassword;
+  const showFillAction =
+    pageContext.intent !== "signup" &&
+    pageContext.intent !== "password_change" &&
+    singleMatch;
+  const showSaveAction =
+    vaultExists &&
+    (pendingSaveCandidate !== null ||
+      pageContext.intent === "signup" ||
+      (pageContext.intent === "login" &&
+        (currentSiteMatches.length === 0 ||
+          (Boolean(actionableUsername) && !knownUsername))));
 
-  fillButton.hidden = !singleMatch;
+  fillButton.hidden = !showFillAction;
   fillButton.disabled =
     !hasSupportedPage ||
     !backendConnected ||
-    !singleMatch ||
+    !showFillAction ||
     fillingEntryId !== null;
   fillButton.textContent = fillingEntryId !== null ? "Filling..." : "Fill";
 
+  generatePasswordButton.hidden = !showGenerateAction;
   generatePasswordButton.disabled =
     !hasSupportedPage ||
     !backendConnected ||
+    !showGenerateAction ||
     captureInFlight ||
     generationInFlight ||
     saveInFlight ||
@@ -775,15 +838,20 @@ function updateFillButtonState() {
     ? "Generating..."
     : "Generate";
 
+  saveLoginButton.hidden = !showSaveAction;
   saveLoginButton.disabled =
     !hasSupportedPage ||
     !backendConnected ||
-    !vaultExists ||
+    !showSaveAction ||
     captureInFlight ||
     generationInFlight ||
     saveInFlight ||
     fillingEntryId !== null;
-  saveLoginButton.textContent = captureInFlight ? "Reading..." : "Save";
+  saveLoginButton.textContent = captureInFlight
+    ? "Reading..."
+    : currentSiteMatches.length > 0 && pageContext.intent === "login"
+      ? "Save Another"
+      : "Save";
 }
 
 function resetMatches(summaryText: string) {
@@ -896,7 +964,10 @@ function formatMatchDetail(match: NativeHostSiteMatch) {
 }
 
 function renderMatchPicker() {
-  const multipleMatches = currentSiteMatches.length > 1;
+  const multipleMatches =
+    currentSiteMatches.length > 1 &&
+    pageContext.intent !== "signup" &&
+    pageContext.intent !== "password_change";
   matchPicker.hidden = !multipleMatches;
   matchList.replaceChildren();
 
@@ -1352,6 +1423,38 @@ function handleSiteMatchFailure(error: string) {
   renderMessage(error, "error");
 }
 
+function inspectPageContext() {
+  if (!hasSupportedPage) {
+    setPageContext({
+      intent: "unknown",
+      visibleUsername: null,
+      hasPasswordField: false,
+      hasConfirmationPasswordField: false,
+      canGeneratePassword: false,
+      hasPendingSaveUsername: false,
+      pendingUsername: null,
+    });
+    return;
+  }
+
+  sendMessage(
+    {
+      type: "termkey.content.inspectPageContext",
+    },
+    (response) => {
+      if (!response.ok) {
+        return;
+      }
+
+      if (response.response.type !== "page_context") {
+        return;
+      }
+
+      setPageContext(response.response.context);
+    }
+  );
+}
+
 function findSiteMatches() {
   if (!hasSupportedPage) {
     setCurrentSiteMatches([]);
@@ -1443,6 +1546,7 @@ function refreshStatus() {
     }
 
     renderMessage("Checking this site...");
+    inspectPageContext();
     findSiteMatches();
   });
 }

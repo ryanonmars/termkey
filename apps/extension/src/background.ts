@@ -4,6 +4,7 @@ import { coreReady } from "@termkey/core";
 import type {
   NativeHostRequest,
   NativeHostResponse,
+  PopupPageIntent,
   PopupToBackgroundMessage,
   PopupToBackgroundResponse,
 } from "@termkey/types";
@@ -358,6 +359,79 @@ chrome.runtime.onMessage.addListener(
                   },
                 });
               });
+            });
+          }
+        )
+        .catch((error: Error) => {
+          sendResponse({ ok: false, error: error.message });
+        });
+      return true;
+    }
+
+    if (message?.type === "termkey.content.inspectPageContext") {
+      void Promise.all([getCurrentTabId(), getCurrentTabUrl()])
+        .then(([tabId, url]) =>
+          ensureContentScript(tabId).then(() =>
+            Promise.all([
+              sendMessageToTab<{
+                ok: boolean;
+              error?: string;
+              intent?: PopupPageIntent;
+              visibleUsername?: string | null;
+              hasPasswordField?: boolean;
+              hasConfirmationPasswordField?: boolean;
+              canGeneratePassword?: boolean;
+            }>(tabId, {
+              type: "termkey.inspectPageContext",
+            }),
+              readPendingSaveDraft(tabId),
+            ]).then(([pageContext, draft]) => ({ pageContext, draft, url }))
+          )
+        )
+        .then(
+          ({
+            pageContext,
+            draft,
+            url,
+          }: {
+            pageContext: {
+              ok: boolean;
+              error?: string;
+              intent?: PopupPageIntent;
+              visibleUsername?: string | null;
+              hasPasswordField?: boolean;
+              hasConfirmationPasswordField?: boolean;
+              canGeneratePassword?: boolean;
+            };
+            draft: PendingSaveDraft | null;
+            url: string;
+          }) => {
+            if (!pageContext?.ok) {
+              sendResponse({
+                ok: false,
+                error:
+                  pageContext?.error ??
+                  "Could not inspect the current page.",
+              });
+              return;
+            }
+
+            const reusableDraft = canReusePendingSaveDraft(url, draft) ? draft : null;
+            sendResponse({
+              ok: true,
+              response: {
+                type: "page_context",
+                context: {
+                  intent: pageContext.intent ?? "unknown",
+                  visibleUsername: pageContext.visibleUsername ?? null,
+                  hasPasswordField: pageContext.hasPasswordField === true,
+                  hasConfirmationPasswordField:
+                    pageContext.hasConfirmationPasswordField === true,
+                  canGeneratePassword: pageContext.canGeneratePassword === true,
+                  hasPendingSaveUsername: reusableDraft !== null,
+                  pendingUsername: reusableDraft?.username ?? null,
+                },
+              },
             });
           }
         )
