@@ -135,11 +135,7 @@ fn managed_extension_dir() -> PathBuf {
 
 fn locate_extension_source() -> Result<PathBuf> {
     let current_exe = std::env::current_exe().map_err(TermKeyError::Io)?;
-    let exe_dir = current_exe.parent().ok_or_else(|| {
-        TermKeyError::ConfigError("Could not determine the TermKey executable directory.".into())
-    })?;
-
-    for candidate in extension_source_candidates(exe_dir, &current_exe) {
+    for candidate in extension_source_candidates(&current_exe) {
         if is_extension_bundle_dir(&candidate) {
             return Ok(candidate);
         }
@@ -150,31 +146,42 @@ fn locate_extension_source() -> Result<PathBuf> {
     ))
 }
 
-fn extension_source_candidates(exe_dir: &Path, current_exe: &Path) -> Vec<PathBuf> {
+fn extension_source_candidates(current_exe: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
+    let executable_paths = executable_candidate_paths(current_exe);
 
     if let Ok(path) = std::env::var(EXTENSION_SOURCE_ENV) {
         candidates.push(PathBuf::from(path));
     }
 
-    candidates.push(exe_dir.join("browser-extension").join("chrome"));
-    candidates.push(exe_dir.join("browser-extension"));
+    for executable_path in &executable_paths {
+        if let Some(exe_dir) = executable_path.parent() {
+            candidates.push(exe_dir.join("browser-extension").join("chrome"));
+            candidates.push(exe_dir.join("browser-extension"));
 
-    if let Some(resources_dir) = macos_resources_dir(current_exe) {
-        candidates.push(resources_dir.join("browser-extension").join("chrome"));
+            for prefix in install_prefix_candidates(exe_dir) {
+                candidates.push(
+                    prefix
+                        .join("share")
+                        .join("termkey")
+                        .join("browser-extension")
+                        .join("chrome"),
+                );
+            }
+
+            if let Some(repo_root) = repo_root_from_exe(exe_dir) {
+                candidates.push(repo_root.join("browser-extension").join("chrome"));
+                candidates.push(repo_root.join("apps").join("extension"));
+            }
+        }
+
+        if let Some(resources_dir) = macos_resources_dir(executable_path) {
+            candidates.push(resources_dir.join("browser-extension").join("chrome"));
+        }
     }
 
     if let Some(resources_dir) = macos_installed_app_resources_dir() {
         candidates.push(resources_dir.join("browser-extension").join("chrome"));
-    }
-
-    for prefix in install_prefix_candidates(exe_dir) {
-        candidates.push(prefix.join("share").join("termkey").join("browser-extension").join("chrome"));
-    }
-
-    if let Some(repo_root) = repo_root_from_exe(exe_dir) {
-        candidates.push(repo_root.join("browser-extension").join("chrome"));
-        candidates.push(repo_root.join("apps").join("extension"));
     }
 
     candidates
@@ -188,11 +195,7 @@ fn is_extension_bundle_dir(path: &Path) -> bool {
 
 fn locate_native_host_binary() -> Result<PathBuf> {
     let current_exe = std::env::current_exe().map_err(TermKeyError::Io)?;
-    let exe_dir = current_exe.parent().ok_or_else(|| {
-        TermKeyError::ConfigError("Could not determine the TermKey executable directory.".into())
-    })?;
-
-    for candidate in native_host_binary_candidates(exe_dir, &current_exe) {
+    for candidate in native_host_binary_candidates(&current_exe) {
         if candidate.is_file() {
             return Ok(candidate);
         }
@@ -204,35 +207,52 @@ fn locate_native_host_binary() -> Result<PathBuf> {
     ))
 }
 
-fn native_host_binary_candidates(exe_dir: &Path, current_exe: &Path) -> Vec<PathBuf> {
+fn native_host_binary_candidates(current_exe: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let binary_name = native_host_binary_name();
+    let executable_paths = executable_candidate_paths(current_exe);
 
     if let Ok(path) = std::env::var(NATIVE_HOST_BINARY_ENV) {
         candidates.push(PathBuf::from(path));
     }
 
-    candidates.push(exe_dir.join(binary_name));
+    for executable_path in &executable_paths {
+        if let Some(exe_dir) = executable_path.parent() {
+            candidates.push(exe_dir.join(binary_name));
 
-    if let Some(resources_dir) = macos_resources_dir(current_exe) {
-        candidates.push(resources_dir.join("bin").join(binary_name));
+            for prefix in install_prefix_candidates(exe_dir) {
+                candidates.push(prefix.join("libexec").join(binary_name));
+                candidates.push(prefix.join("share").join("termkey").join("bin").join(binary_name));
+            }
+
+            if let Some(repo_root) = repo_root_from_exe(exe_dir) {
+                candidates.push(repo_root.join("target").join("debug").join(binary_name));
+                candidates.push(repo_root.join("target").join("release").join(binary_name));
+            }
+        }
+
+        if let Some(resources_dir) = macos_resources_dir(executable_path) {
+            candidates.push(resources_dir.join("bin").join(binary_name));
+        }
     }
 
     if let Some(resources_dir) = macos_installed_app_resources_dir() {
         candidates.push(resources_dir.join("bin").join(binary_name));
     }
 
-    for prefix in install_prefix_candidates(exe_dir) {
-        candidates.push(prefix.join("libexec").join(binary_name));
-        candidates.push(prefix.join("share").join("termkey").join("bin").join(binary_name));
-    }
-
-    if let Some(repo_root) = repo_root_from_exe(exe_dir) {
-        candidates.push(repo_root.join("target").join("debug").join(binary_name));
-        candidates.push(repo_root.join("target").join("release").join(binary_name));
-    }
-
     candidates
+}
+
+fn executable_candidate_paths(current_exe: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![current_exe.to_path_buf()];
+
+    if let Ok(canonical) = fs::canonicalize(current_exe) {
+        if canonical != current_exe {
+            paths.push(canonical);
+        }
+    }
+
+    paths
 }
 
 fn native_host_binary_name() -> &'static str {
