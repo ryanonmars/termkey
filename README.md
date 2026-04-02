@@ -81,7 +81,21 @@ iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/apps/cli/scripts
 
 Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)
 
-**SmartScreen:** On first launch click "More info" → "Run anyway", or right-click the `.exe`, open **Properties**, and check **Unblock**.
+**Windows Security / SmartScreen:** Windows may block the installer or app on first launch with a "Windows protected your PC" message because TermKey is not yet broadly recognized by Microsoft SmartScreen.
+
+If that happens:
+
+1. Click **More info**
+2. Click **Run anyway**
+
+If Windows keeps blocking the downloaded file:
+
+1. Right-click `TermKey-Setup.exe` or the extracted `termkey.exe`
+2. Click **Properties**
+3. Check **Unblock** near the bottom of the window
+4. Click **Apply**, then launch it again
+
+If your environment does not allow **Run anyway**, ask your Windows administrator or security policy owner to allow the binary before continuing.
 
 ---
 
