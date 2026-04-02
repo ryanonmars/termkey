@@ -81,9 +81,9 @@ iwr https://raw.githubusercontent.com/ryanonmars/termkey/master/apps/cli/scripts
 
 Manual ZIP: [Windows x86_64](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x86_64.zip)
 
-**Windows Security / SmartScreen:** Windows may block the installer or app on first launch with a "Windows protected your PC" message because TermKey is not yet broadly recognized by Microsoft SmartScreen.
+**Windows Security blockers:** Windows may block the installer or app on first launch. The two most likely blockers are **Microsoft Defender SmartScreen** and, on some Windows 11 systems, **Smart App Control**.
 
-If that happens:
+If you see the usual `"Windows protected your PC"` prompt from SmartScreen:
 
 1. Click **More info**
 2. Click **Run anyway**
@@ -95,7 +95,7 @@ If Windows keeps blocking the downloaded file:
 3. Check **Unblock** near the bottom of the window
 4. Click **Apply**, then launch it again
 
-If your environment does not allow **Run anyway**, ask your Windows administrator or security policy owner to allow the binary before continuing.
+If there is no **Run anyway** option and Windows says the app was blocked for your protection, **Smart App Control** may be the blocker instead. Check **Windows Security → App & browser control → Smart App Control**. If it is enabled, you may need your Windows administrator or security policy owner to allow the app before it can run.
 
 ---
 
