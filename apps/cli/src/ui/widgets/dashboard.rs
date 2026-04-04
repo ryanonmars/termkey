@@ -4,6 +4,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::update::UpdateStatus;
 use crate::vault::model::EntryMeta;
 
 use super::entry_table::EntryTable;
@@ -35,7 +36,7 @@ impl Dashboard {
         self.table.handle_key(key, modifiers);
     }
 
-    pub fn render(&mut self, frame: &mut Frame) {
+    pub fn render(&mut self, frame: &mut Frame, update_status: &UpdateStatus) {
         let area = frame.area();
         let menu_lines = self.menu_bar.lines_for_width(area.width).max(1).min(3);
 
@@ -54,6 +55,7 @@ impl Dashboard {
             entry_count,
             self.table.filter_text(),
             self.table.number_buffer(),
+            update_status.clone(),
         );
         status_bar.render(frame, chunks[0]);
 

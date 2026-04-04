@@ -1,6 +1,6 @@
 [package]
 name = "termkey"
-version = "0.2.21"
+version = "0.2.22"
 edition = "2021"
 description = "CLI encrypted storage manager for cryptocurrency private keys and seed phrases"
 
@@ -31,6 +31,7 @@ unicode-width = "0.2"
 rustyline = "15"
 crossterm = "0.28"
 ratatui = "0.28"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 # Address derivation (feature-gated)
 k256 = { version = "0.13", features = ["ecdsa"], optional = true }

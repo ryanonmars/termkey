@@ -7,6 +7,7 @@ pub mod error;
 pub mod links;
 pub mod repl;
 pub mod ui;
+pub mod update;
 pub mod vault;
 
 use std::path::Path;

@@ -1,11 +1,13 @@
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 use crate::config::model::Config;
 use crate::error::{Result, TermKeyError};
 use crate::ui::terminal::Tui;
+use crate::update::{self, UpdateStatus};
 use crate::vault::model::{Entry, VaultData};
 use crate::vault::storage;
 
@@ -60,6 +62,8 @@ pub struct App {
     pending_view_entry_idx: Option<usize>,
     /// Entry index pending secondary password verification for copy
     pending_copy_entry_idx: Option<usize>,
+    update_check_rx: Option<Receiver<UpdateStatus>>,
+    update_status: UpdateStatus,
 }
 
 pub enum AppView {
@@ -126,6 +130,8 @@ impl App {
             pending_new_password: None,
             pending_view_entry_idx: None,
             pending_copy_entry_idx: None,
+            update_check_rx: Some(update::spawn_update_check()),
+            update_status: UpdateStatus::Unknown,
         })
     }
 
@@ -175,10 +181,13 @@ impl App {
     }
 
     fn render(&mut self, frame: &mut Frame) {
+        self.poll_update_status();
+        let update_status = self.update_status.clone();
+
         match &mut self.view {
             AppView::Wizard(wizard) => wizard.render(frame),
             AppView::Login(login) => login.render(frame),
-            AppView::Dashboard(dashboard) => dashboard.render(frame),
+            AppView::Dashboard(dashboard) => dashboard.render(frame, &update_status),
             AppView::AddEntry(add_entry) => add_entry.render(frame),
             AppView::ViewEntry(view_entry) => view_entry.render(frame),
             AppView::EditEntry(edit_entry) => edit_entry.render(frame),
@@ -220,6 +229,23 @@ impl App {
             }
             AppView::Input(input, _) => {
                 input.render(frame);
+            }
+        }
+    }
+
+    fn poll_update_status(&mut self) {
+        let Some(rx) = &self.update_check_rx else {
+            return;
+        };
+
+        match rx.try_recv() {
+            Ok(status) => {
+                self.update_status = status;
+                self.update_check_rx = None;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.update_check_rx = None;
             }
         }
     }
