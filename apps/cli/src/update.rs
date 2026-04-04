@@ -8,6 +8,7 @@ use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::Deserialize;
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const RELEASES_PAGE_URL: &str = "https://github.com/ryanonmars/termkey/releases";
 const LATEST_RELEASE_API_URL: &str =
     "https://api.github.com/repos/ryanonmars/termkey/releases/latest";
 
@@ -32,11 +33,19 @@ pub fn spawn_update_check() -> Receiver<UpdateStatus> {
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let status = check_for_updates().unwrap_or(UpdateStatus::Unknown);
+        let status = get_update_status();
         let _ = tx.send(status);
     });
 
     rx
+}
+
+pub fn get_update_status() -> UpdateStatus {
+    check_for_updates().unwrap_or(UpdateStatus::Unknown)
+}
+
+pub fn release_page_url_for_version(version: &str) -> String {
+    format!("{}/tag/v{}", RELEASES_PAGE_URL, normalize_version(version))
 }
 
 fn check_for_updates() -> Result<UpdateStatus, reqwest::Error> {

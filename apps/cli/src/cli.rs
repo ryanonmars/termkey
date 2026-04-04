@@ -82,6 +82,10 @@ pub enum Commands {
     /// Recover vault access using your recovery question
     Recover,
 
+    /// Update TermKey via Homebrew or show the latest release page
+    #[command(alias = "upgrade")]
+    Update,
+
     /// View or change configuration settings
     Config {
         /// Display current configuration

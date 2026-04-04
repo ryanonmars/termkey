@@ -2448,7 +2448,7 @@ dependencies = [
 
 [[package]]
 name = "termkey"
-version = "0.2.22"
+version = "0.2.23"
 dependencies = [
  "arboard",
  "argon2",

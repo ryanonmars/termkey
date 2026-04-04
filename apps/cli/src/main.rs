@@ -37,6 +37,7 @@ fn main() {
             Commands::Import { ref file } => commands::import::run(file),
             Commands::Passwd => commands::passwd::run(),
             Commands::Recover => commands::recover::run(),
+            Commands::Update => commands::update_cmd::run(),
             Commands::Config {
                 show,
                 ref clipboard_timeout,
