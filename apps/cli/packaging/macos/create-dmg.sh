@@ -37,7 +37,27 @@ chmod 644 "$staging_dir/Install TermKey.pkg"
 chmod 644 "$staging_dir/README.txt"
 xattr -cr "$staging_dir" 2>/dev/null || true
 
-hdiutil create \
+run_with_retries() {
+  local attempts=$1
+  shift
+
+  local try=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+
+    local exit_code=$?
+    if (( try >= attempts )); then
+      return "$exit_code"
+    fi
+
+    sleep "$try"
+    try=$((try + 1))
+  done
+}
+
+run_with_retries 3 hdiutil create \
   -volname "$volume_name" \
   -srcfolder "$staging_dir" \
   -fs HFS+ \
@@ -47,16 +67,16 @@ hdiutil create \
   >/dev/null
 
 if [[ -n "$icon_path" ]] && command -v SetFile >/dev/null 2>&1; then
-  device=$(hdiutil attach -readwrite -nobrowse -noverify -mountpoint "$mount_dir" "$tmp_dmg" | awk '/Apple_HFS/ {print $1; exit}')
+  device=$(run_with_retries 3 hdiutil attach -readwrite -nobrowse -noverify -mountpoint "$mount_dir" "$tmp_dmg" | awk '/Apple_HFS/ {print $1; exit}')
   if [[ -n "$device" ]]; then
     cp "$icon_path" "$mount_dir/.VolumeIcon.icns"
     SetFile -a C "$mount_dir" || true
     SetFile -a V "$mount_dir/.VolumeIcon.icns" || true
-    hdiutil detach "$device" >/dev/null
+    run_with_retries 3 hdiutil detach "$device" >/dev/null || hdiutil detach -force "$device" >/dev/null
   fi
 fi
 
-hdiutil convert \
+run_with_retries 3 hdiutil convert \
   "$tmp_dmg" \
   -ov \
   -format UDZO \
