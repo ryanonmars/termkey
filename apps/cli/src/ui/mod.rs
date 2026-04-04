@@ -5,6 +5,7 @@ pub mod prompt;
 pub mod screens;
 pub mod terminal;
 pub mod terminal_graphics;
+pub mod text_edit;
 pub mod theme;
 pub mod widgets;
 

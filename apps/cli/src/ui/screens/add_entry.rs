@@ -12,25 +12,36 @@ use zeroize::Zeroize;
 use crate::crypto::derive::derive_address;
 use crate::crypto::entry_key;
 use crate::crypto::passwords;
+use crate::ui::text_edit;
 use crate::vault::model::{Entry, SecretType};
 
 pub struct AddEntryScreen {
     current_field: usize,
     name: String,
+    name_cursor: usize,
     secret_type: SecretType,
     custom_secret_type: String,
+    custom_secret_type_cursor: usize,
     secret: String,
+    secret_cursor: usize,
     secret_confirm: String,
+    secret_confirm_cursor: usize,
     generated_password: bool,
     network: String,
     custom_network: String,
+    custom_network_cursor: usize,
     use_custom_network: bool,
     username: String,
+    username_cursor: usize,
     url: String,
+    url_cursor: usize,
     notes: String,
+    notes_cursor: usize,
     use_secondary_password: bool,
     secondary_password: String,
+    secondary_password_cursor: usize,
     secondary_password_confirm: String,
+    secondary_password_confirm_cursor: usize,
     show_type_select: bool,
     type_selected: usize,
     show_network_select: bool,
@@ -52,20 +63,30 @@ impl AddEntryScreen {
         Self {
             current_field: 0,
             name: String::new(),
-            secret_type: SecretType::PrivateKey,
+            name_cursor: 0,
+            secret_type: SecretType::Password,
             custom_secret_type: String::new(),
+            custom_secret_type_cursor: 0,
             secret: String::new(),
+            secret_cursor: 0,
             secret_confirm: String::new(),
+            secret_confirm_cursor: 0,
             generated_password: false,
             network: "Ethereum".to_string(),
             custom_network: String::new(),
+            custom_network_cursor: 0,
             use_custom_network: false,
             username: String::new(),
+            username_cursor: 0,
             url: String::new(),
+            url_cursor: 0,
             notes: String::new(),
+            notes_cursor: 0,
             use_secondary_password: false,
             secondary_password: String::new(),
+            secondary_password_cursor: 0,
             secondary_password_confirm: String::new(),
+            secondary_password_confirm_cursor: 0,
             show_type_select: false,
             type_selected: 0,
             show_network_select: false,
@@ -75,6 +96,8 @@ impl AddEntryScreen {
     }
 
     pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> AddEntryAction {
+        let movement_modifiers = KeyModifiers::ALT | KeyModifiers::CONTROL;
+
         if key == KeyCode::Esc {
             return AddEntryAction::Cancel;
         }
@@ -92,6 +115,30 @@ impl AddEntryScreen {
         }
 
         match key {
+            KeyCode::Char('a') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_cursor_home();
+                AddEntryAction::Continue
+            }
+            KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_cursor_end();
+                AddEntryAction::Continue
+            }
+            KeyCode::Char('b') if modifiers.contains(KeyModifiers::ALT) => {
+                self.move_cursor_word_left();
+                AddEntryAction::Continue
+            }
+            KeyCode::Char('f') if modifiers.contains(KeyModifiers::ALT) => {
+                self.move_cursor_word_right();
+                AddEntryAction::Continue
+            }
+            KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.backspace_word();
+                AddEntryAction::Continue
+            }
+            KeyCode::Char('d') if modifiers.contains(KeyModifiers::ALT) => {
+                self.delete_word();
+                AddEntryAction::Continue
+            }
             KeyCode::Tab => {
                 self.current_field = (self.current_field + 1) % self.field_count();
                 AddEntryAction::Continue
@@ -134,8 +181,10 @@ impl AddEntryScreen {
                     if !self.use_secondary_password {
                         self.secondary_password.zeroize();
                         self.secondary_password = String::new();
+                        self.secondary_password_cursor = 0;
                         self.secondary_password_confirm.zeroize();
                         self.secondary_password_confirm = String::new();
+                        self.secondary_password_confirm_cursor = 0;
                     }
                 }
                 // Last field -> save
@@ -147,11 +196,50 @@ impl AddEntryScreen {
                 AddEntryAction::Continue
             }
             KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                if modifiers.contains(KeyModifiers::ALT) {
+                    return AddEntryAction::Continue;
+                }
                 self.insert_char(c);
                 AddEntryAction::Continue
             }
+            KeyCode::Left => {
+                if modifiers.intersects(movement_modifiers) {
+                    self.move_cursor_word_left();
+                } else {
+                    self.move_cursor_left();
+                }
+                AddEntryAction::Continue
+            }
+            KeyCode::Right => {
+                if modifiers.intersects(movement_modifiers) {
+                    self.move_cursor_word_right();
+                } else {
+                    self.move_cursor_right();
+                }
+                AddEntryAction::Continue
+            }
+            KeyCode::Home => {
+                self.move_cursor_home();
+                AddEntryAction::Continue
+            }
+            KeyCode::End => {
+                self.move_cursor_end();
+                AddEntryAction::Continue
+            }
             KeyCode::Backspace => {
-                self.delete_char();
+                if modifiers.intersects(movement_modifiers) {
+                    self.backspace_word();
+                } else {
+                    self.backspace_char();
+                }
+                AddEntryAction::Continue
+            }
+            KeyCode::Delete => {
+                if modifiers.intersects(movement_modifiers) {
+                    self.delete_word();
+                } else {
+                    self.delete_char();
+                }
                 AddEntryAction::Continue
             }
             _ => AddEntryAction::Continue,
@@ -172,9 +260,9 @@ impl AddEntryScreen {
             }
             KeyCode::Enter => {
                 self.secret_type = match self.type_selected {
-                    0 => SecretType::PrivateKey,
+                    0 => SecretType::Password,
                     1 => SecretType::SeedPhrase,
-                    2 => SecretType::Password,
+                    2 => SecretType::PrivateKey,
                     _ => SecretType::Other(self.custom_secret_type.trim().to_string()),
                 };
                 if self.is_crypto_type() && self.network.is_empty() && !self.use_custom_network {
@@ -182,6 +270,7 @@ impl AddEntryScreen {
                 }
                 if !self.secret_type.is_other_type() {
                     self.custom_secret_type.clear();
+                    self.custom_secret_type_cursor = 0;
                 }
                 if !self.is_password_type() {
                     self.generated_password = false;
@@ -215,16 +304,19 @@ impl AddEntryScreen {
                         self.network = "Ethereum".to_string();
                         self.use_custom_network = false;
                         self.custom_network.clear();
+                        self.custom_network_cursor = 0;
                     }
                     1 => {
                         self.network = "Bitcoin".to_string();
                         self.use_custom_network = false;
                         self.custom_network.clear();
+                        self.custom_network_cursor = 0;
                     }
                     2 => {
                         self.network = "Solana".to_string();
                         self.use_custom_network = false;
                         self.custom_network.clear();
+                        self.custom_network_cursor = 0;
                     }
                     _ => {
                         self.use_custom_network = true;
@@ -248,29 +340,102 @@ impl AddEntryScreen {
 
     fn insert_char(&mut self, c: char) {
         match self.current_field {
-            0 => self.name.push(c),
+            0 => text_edit::insert_char(&mut self.name, &mut self.name_cursor, c),
             f if self.has_custom_type_field() && f == self.custom_type_field() => {
-                self.custom_secret_type.push(c);
+                text_edit::insert_char(
+                    &mut self.custom_secret_type,
+                    &mut self.custom_secret_type_cursor,
+                    c,
+                );
             }
             f if f == self.secret_field() => {
                 self.generated_password = false;
-                self.secret.push(c);
+                text_edit::insert_char(&mut self.secret, &mut self.secret_cursor, c);
             }
             f if f == self.confirm_field() => {
                 self.generated_password = false;
-                self.secret_confirm.push(c);
+                text_edit::insert_char(
+                    &mut self.secret_confirm,
+                    &mut self.secret_confirm_cursor,
+                    c,
+                );
             }
             f if self.has_custom_network_field() && f == self.custom_network_field() => {
-                self.custom_network.push(c);
+                text_edit::insert_char(
+                    &mut self.custom_network,
+                    &mut self.custom_network_cursor,
+                    c,
+                );
             }
-            f if self.is_password_type() && f == self.username_field() => self.username.push(c),
-            f if self.is_password_type() && f == self.url_field() => self.url.push(c),
-            f if f == self.notes_field() => self.notes.push(c),
+            f if self.is_password_type() && f == self.username_field() => {
+                text_edit::insert_char(&mut self.username, &mut self.username_cursor, c);
+            }
+            f if self.is_password_type() && f == self.url_field() => {
+                text_edit::insert_char(&mut self.url, &mut self.url_cursor, c);
+            }
+            f if f == self.notes_field() => {
+                text_edit::insert_char(&mut self.notes, &mut self.notes_cursor, c);
+            }
             f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
-                self.secondary_password.push(c);
+                text_edit::insert_char(
+                    &mut self.secondary_password,
+                    &mut self.secondary_password_cursor,
+                    c,
+                );
             }
             f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
-                self.secondary_password_confirm.push(c);
+                text_edit::insert_char(
+                    &mut self.secondary_password_confirm,
+                    &mut self.secondary_password_confirm_cursor,
+                    c,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn backspace_char(&mut self) {
+        match self.current_field {
+            0 => {
+                text_edit::backspace(&mut self.name, &mut self.name_cursor);
+            }
+            f if self.has_custom_type_field() && f == self.custom_type_field() => {
+                text_edit::backspace(
+                    &mut self.custom_secret_type,
+                    &mut self.custom_secret_type_cursor,
+                );
+            }
+            f if f == self.secret_field() => {
+                self.generated_password = false;
+                text_edit::backspace(&mut self.secret, &mut self.secret_cursor);
+            }
+            f if f == self.confirm_field() => {
+                self.generated_password = false;
+                text_edit::backspace(&mut self.secret_confirm, &mut self.secret_confirm_cursor);
+            }
+            f if self.has_custom_network_field() && f == self.custom_network_field() => {
+                text_edit::backspace(&mut self.custom_network, &mut self.custom_network_cursor);
+            }
+            f if self.is_password_type() && f == self.username_field() => {
+                text_edit::backspace(&mut self.username, &mut self.username_cursor);
+            }
+            f if self.is_password_type() && f == self.url_field() => {
+                text_edit::backspace(&mut self.url, &mut self.url_cursor);
+            }
+            f if f == self.notes_field() => {
+                text_edit::backspace(&mut self.notes, &mut self.notes_cursor);
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
+                text_edit::backspace(
+                    &mut self.secondary_password,
+                    &mut self.secondary_password_cursor,
+                );
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
+                text_edit::backspace(
+                    &mut self.secondary_password_confirm,
+                    &mut self.secondary_password_confirm_cursor,
+                );
             }
             _ => {}
         }
@@ -279,36 +444,161 @@ impl AddEntryScreen {
     fn delete_char(&mut self) {
         match self.current_field {
             0 => {
-                self.name.pop();
+                text_edit::delete(&mut self.name, &mut self.name_cursor);
             }
             f if self.has_custom_type_field() && f == self.custom_type_field() => {
-                self.custom_secret_type.pop();
+                text_edit::delete(
+                    &mut self.custom_secret_type,
+                    &mut self.custom_secret_type_cursor,
+                );
             }
             f if f == self.secret_field() => {
                 self.generated_password = false;
-                self.secret.pop();
+                text_edit::delete(&mut self.secret, &mut self.secret_cursor);
             }
             f if f == self.confirm_field() => {
                 self.generated_password = false;
-                self.secret_confirm.pop();
+                text_edit::delete(&mut self.secret_confirm, &mut self.secret_confirm_cursor);
             }
             f if self.has_custom_network_field() && f == self.custom_network_field() => {
-                self.custom_network.pop();
+                text_edit::delete(&mut self.custom_network, &mut self.custom_network_cursor);
             }
             f if self.is_password_type() && f == self.username_field() => {
-                self.username.pop();
+                text_edit::delete(&mut self.username, &mut self.username_cursor);
             }
             f if self.is_password_type() && f == self.url_field() => {
-                self.url.pop();
+                text_edit::delete(&mut self.url, &mut self.url_cursor);
             }
             f if f == self.notes_field() => {
-                self.notes.pop();
+                text_edit::delete(&mut self.notes, &mut self.notes_cursor);
             }
             f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
-                self.secondary_password.pop();
+                text_edit::delete(
+                    &mut self.secondary_password,
+                    &mut self.secondary_password_cursor,
+                );
             }
             f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
-                self.secondary_password_confirm.pop();
+                text_edit::delete(
+                    &mut self.secondary_password_confirm,
+                    &mut self.secondary_password_confirm_cursor,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn move_cursor_left(&mut self) {
+        self.with_active_cursor(|cursor, _| text_edit::move_left(cursor));
+    }
+
+    fn move_cursor_right(&mut self) {
+        self.with_active_cursor(|cursor, value| text_edit::move_right(cursor, value));
+    }
+
+    fn move_cursor_home(&mut self) {
+        self.with_active_cursor(|cursor, _| text_edit::move_home(cursor));
+    }
+
+    fn move_cursor_end(&mut self) {
+        self.with_active_cursor(|cursor, value| text_edit::move_end(cursor, value));
+    }
+
+    fn move_cursor_word_left(&mut self) {
+        self.with_active_cursor(|cursor, value| text_edit::move_word_left(cursor, value));
+    }
+
+    fn move_cursor_word_right(&mut self) {
+        self.with_active_cursor(|cursor, value| text_edit::move_word_right(cursor, value));
+    }
+
+    fn backspace_word(&mut self) {
+        self.with_active_string(|value, cursor| text_edit::backspace_word(value, cursor));
+    }
+
+    fn delete_word(&mut self) {
+        self.with_active_string(|value, cursor| text_edit::delete_word(value, cursor));
+    }
+
+    fn with_active_cursor(&mut self, mut edit: impl FnMut(&mut usize, &str)) {
+        match self.current_field {
+            0 => edit(&mut self.name_cursor, &self.name),
+            f if self.has_custom_type_field() && f == self.custom_type_field() => {
+                edit(
+                    &mut self.custom_secret_type_cursor,
+                    &self.custom_secret_type,
+                );
+            }
+            f if f == self.secret_field() => edit(&mut self.secret_cursor, &self.secret),
+            f if f == self.confirm_field() => {
+                edit(&mut self.secret_confirm_cursor, &self.secret_confirm);
+            }
+            f if self.has_custom_network_field() && f == self.custom_network_field() => {
+                edit(&mut self.custom_network_cursor, &self.custom_network);
+            }
+            f if self.is_password_type() && f == self.username_field() => {
+                edit(&mut self.username_cursor, &self.username);
+            }
+            f if self.is_password_type() && f == self.url_field() => {
+                edit(&mut self.url_cursor, &self.url);
+            }
+            f if f == self.notes_field() => edit(&mut self.notes_cursor, &self.notes),
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
+                edit(
+                    &mut self.secondary_password_cursor,
+                    &self.secondary_password,
+                );
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
+                edit(
+                    &mut self.secondary_password_confirm_cursor,
+                    &self.secondary_password_confirm,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn with_active_string(&mut self, mut edit: impl FnMut(&mut String, &mut usize)) {
+        match self.current_field {
+            0 => edit(&mut self.name, &mut self.name_cursor),
+            f if self.has_custom_type_field() && f == self.custom_type_field() => {
+                edit(
+                    &mut self.custom_secret_type,
+                    &mut self.custom_secret_type_cursor,
+                );
+            }
+            f if f == self.secret_field() => {
+                self.generated_password = false;
+                edit(&mut self.secret, &mut self.secret_cursor);
+            }
+            f if f == self.confirm_field() => {
+                self.generated_password = false;
+                edit(&mut self.secret_confirm, &mut self.secret_confirm_cursor);
+            }
+            f if self.has_custom_network_field() && f == self.custom_network_field() => {
+                edit(&mut self.custom_network, &mut self.custom_network_cursor);
+            }
+            f if self.is_password_type() && f == self.username_field() => {
+                edit(&mut self.username, &mut self.username_cursor);
+            }
+            f if self.is_password_type() && f == self.url_field() => {
+                edit(&mut self.url, &mut self.url_cursor);
+            }
+            f if f == self.notes_field() => {
+                edit(&mut self.notes, &mut self.notes_cursor);
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 1 => {
+                edit(
+                    &mut self.secondary_password,
+                    &mut self.secondary_password_cursor,
+                );
+            }
+            f if self.use_secondary_password && f == self.secondary_toggle_field() + 2 => {
+                edit(
+                    &mut self.secondary_password_confirm,
+                    &mut self.secondary_password_confirm_cursor,
+                );
             }
             _ => {}
         }
@@ -433,6 +723,8 @@ impl AddEntryScreen {
         let generated = passwords::generate_password();
         self.secret = generated.clone();
         self.secret_confirm = generated;
+        self.secret_cursor = text_edit::char_count(&self.secret);
+        self.secret_confirm_cursor = text_edit::char_count(&self.secret_confirm);
         self.generated_password = true;
     }
 
@@ -591,13 +883,13 @@ impl AddEntryScreen {
         let mut field_idx = 0;
 
         // Field 0: Name
-        lines.push(self.render_field(field_idx, "Entry name", &self.name, false));
+        lines.push(self.render_field(field_idx, "Entry name", &self.name, self.name_cursor));
         field_idx += 1;
 
         // Field 1: Secret type
         lines.push(Line::from(""));
         let secret_type_str = self.secret_type.to_string();
-        lines.push(self.render_field(field_idx, "Secret type", &secret_type_str, false));
+        lines.push(self.render_field(field_idx, "Secret type", &secret_type_str, 0));
         field_idx += 1;
 
         if self.has_custom_type_field() {
@@ -606,7 +898,7 @@ impl AddEntryScreen {
                 field_idx,
                 "Custom type",
                 &self.custom_secret_type,
-                false,
+                self.custom_secret_type_cursor,
             ));
             field_idx += 1;
         }
@@ -614,13 +906,18 @@ impl AddEntryScreen {
         // Field 2: Secret
         lines.push(Line::from(""));
         let secret_masked = "\u{2022}".repeat(self.secret.len());
-        lines.push(self.render_field(field_idx, "Secret", &secret_masked, false));
+        lines.push(self.render_field(field_idx, "Secret", &secret_masked, self.secret_cursor));
         field_idx += 1;
 
         // Field 3: Confirm secret
         lines.push(Line::from(""));
         let secret_confirm_masked = "\u{2022}".repeat(self.secret_confirm.len());
-        lines.push(self.render_field(field_idx, "Confirm secret", &secret_confirm_masked, false));
+        lines.push(self.render_field(
+            field_idx,
+            "Confirm secret",
+            &secret_confirm_masked,
+            self.secret_confirm_cursor,
+        ));
         field_idx += 1;
 
         if self.is_password_type() {
@@ -630,7 +927,7 @@ impl AddEntryScreen {
             } else {
                 "Press Enter to generate"
             };
-            lines.push(self.render_field(field_idx, "Generate password", generate_value, false));
+            lines.push(self.render_field(field_idx, "Generate password", generate_value, 0));
             field_idx += 1;
         }
 
@@ -642,7 +939,7 @@ impl AddEntryScreen {
             } else {
                 &self.network
             };
-            lines.push(self.render_field(field_idx, "Network", network_value, false));
+            lines.push(self.render_field(field_idx, "Network", network_value, 0));
             field_idx += 1;
 
             if self.use_custom_network {
@@ -651,25 +948,35 @@ impl AddEntryScreen {
                     field_idx,
                     "Custom network",
                     &self.custom_network,
-                    false,
+                    self.custom_network_cursor,
                 ));
                 field_idx += 1;
             }
         } else if self.is_password_type() {
             // Field 4: Username
             lines.push(Line::from(""));
-            lines.push(self.render_field(field_idx, "Username (optional)", &self.username, false));
+            lines.push(self.render_field(
+                field_idx,
+                "Username (optional)",
+                &self.username,
+                self.username_cursor,
+            ));
             field_idx += 1;
 
             // Field 5: URL
             lines.push(Line::from(""));
-            lines.push(self.render_field(field_idx, "URL (optional)", &self.url, false));
+            lines.push(self.render_field(field_idx, "URL (optional)", &self.url, self.url_cursor));
             field_idx += 1;
         }
 
         // Notes
         lines.push(Line::from(""));
-        lines.push(self.render_field(field_idx, "Notes (optional)", &self.notes, false));
+        lines.push(self.render_field(
+            field_idx,
+            "Notes (optional)",
+            &self.notes,
+            self.notes_cursor,
+        ));
         field_idx += 1;
 
         // Secondary password toggle
@@ -679,7 +986,7 @@ impl AddEntryScreen {
         } else {
             "No"
         };
-        lines.push(self.render_field(field_idx, "Secondary password", toggle_value, false));
+        lines.push(self.render_field(field_idx, "Secondary password", toggle_value, 0));
         field_idx += 1;
 
         // Secondary password fields (only when toggled on)
@@ -687,7 +994,12 @@ impl AddEntryScreen {
         let sp_confirm_masked = "\u{2022}".repeat(self.secondary_password_confirm.len());
         if self.use_secondary_password {
             lines.push(Line::from(""));
-            lines.push(self.render_field(field_idx, "Secondary pwd", &sp_masked, false));
+            lines.push(self.render_field(
+                field_idx,
+                "Secondary pwd",
+                &sp_masked,
+                self.secondary_password_cursor,
+            ));
             field_idx += 1;
 
             lines.push(Line::from(""));
@@ -695,7 +1007,7 @@ impl AddEntryScreen {
                 field_idx,
                 "Confirm secondary",
                 &sp_confirm_masked,
-                false,
+                self.secondary_password_confirm_cursor,
             ));
         }
 
@@ -737,7 +1049,7 @@ impl AddEntryScreen {
         idx: usize,
         label: &str,
         value: &'a str,
-        _multiline: bool,
+        cursor_pos: usize,
     ) -> Line<'a> {
         let is_active = self.current_field == idx;
         let label_style = if is_active {
@@ -754,17 +1066,25 @@ impl AddEntryScreen {
             Style::default().fg(Color::Gray)
         };
 
-        let cursor = if is_active { "\u{2588}" } else { "" };
+        let (before_cursor, after_cursor) = text_edit::cursor_segments(value, cursor_pos);
 
-        Line::from(vec![
-            Span::styled(format!("{}: ", label), label_style),
-            Span::styled(value, value_style),
-            Span::styled(cursor, Style::default().fg(Color::Cyan)),
-        ])
+        if is_active {
+            Line::from(vec![
+                Span::styled(format!("{}: ", label), label_style),
+                Span::styled(before_cursor, value_style),
+                Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
+                Span::styled(after_cursor, value_style),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(format!("{}: ", label), label_style),
+                Span::styled(value, value_style),
+            ])
+        }
     }
 
     fn render_type_select(&self, frame: &mut Frame, area: Rect) {
-        let types = ["Private Key", "Seed Phrase", "Password", "Other"];
+        let types = ["Password", "Seed Phrase", "Private Key", "Other"];
         let items: Vec<ListItem> = types
             .iter()
             .enumerate()
@@ -887,6 +1207,7 @@ mod tests {
     fn custom_network_uses_typed_value() {
         let mut screen = AddEntryScreen::new();
         screen.name = "Custom Entry".to_string();
+        screen.secret_type = SecretType::PrivateKey;
         screen.secret = "not-a-real-key".to_string();
         screen.secret_confirm = "not-a-real-key".to_string();
         screen.use_custom_network = true;
@@ -922,5 +1243,44 @@ mod tests {
 
         assert!(!screen.generated_password);
         assert_ne!(screen.secret, screen.secret_confirm);
+    }
+
+    #[test]
+    fn text_can_be_edited_mid_field() {
+        let mut screen = AddEntryScreen::new();
+        screen.name = "abcd".to_string();
+        screen.name_cursor = 2;
+
+        screen.insert_char('X');
+        assert_eq!(screen.name, "abXcd");
+        assert_eq!(screen.name_cursor, 3);
+
+        screen.backspace_char();
+        assert_eq!(screen.name, "abcd");
+        assert_eq!(screen.name_cursor, 2);
+
+        screen.delete_char();
+        assert_eq!(screen.name, "abd");
+        assert_eq!(screen.name_cursor, 2);
+    }
+
+    #[test]
+    fn alt_word_navigation_and_delete_work() {
+        let mut screen = AddEntryScreen::new();
+        screen.name = "alpha beta gamma".to_string();
+        screen.name_cursor = screen.name.chars().count();
+
+        screen.handle_key(KeyCode::Char('b'), KeyModifiers::ALT);
+        assert_eq!(screen.name_cursor, 11);
+
+        screen.handle_key(KeyCode::Char('b'), KeyModifiers::ALT);
+        assert_eq!(screen.name_cursor, 6);
+
+        screen.handle_key(KeyCode::Backspace, KeyModifiers::ALT);
+        assert_eq!(screen.name, "beta gamma");
+        assert_eq!(screen.name_cursor, 0);
+
+        screen.handle_key(KeyCode::Char('f'), KeyModifiers::ALT);
+        assert_eq!(screen.name_cursor, 4);
     }
 }
