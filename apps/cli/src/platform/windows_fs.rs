@@ -5,6 +5,7 @@ use std::ffi::{c_void, OsStr};
 use std::fs::{self, File};
 use std::io;
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::fs::MetadataExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::Path;
 use std::ptr::{null, null_mut};
@@ -22,11 +23,16 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateDirectoryW, CreateFileW, CREATE_NEW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NORMAL,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    OPEN_ALWAYS, OPEN_EXISTING, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_ALWAYS, OPEN_EXISTING, READ_CONTROL, WRITE_DAC,
+    WRITE_OWNER,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+pub(super) fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
 
 fn wide(value: &OsStr) -> io::Result<Vec<u16>> {
     let mut value: Vec<u16> = value.encode_wide().collect();
@@ -247,7 +253,7 @@ pub(super) fn open_private_file(path: &Path, exclusive: bool) -> io::Result<File
         return Err(io::Error::last_os_error());
     }
     let file = unsafe { File::from_raw_handle(handle.cast()) };
-    if !file.metadata()?.is_file() || file.metadata()?.file_type().is_symlink() {
+    if !file.metadata()?.is_file() || is_reparse_point(&file.metadata()?) {
         return Err(io::Error::other(
             "Protected TermKey path is not a regular file",
         ));
@@ -274,7 +280,7 @@ pub(super) fn open_private_existing_file(path: &Path) -> io::Result<File> {
         return Err(io::Error::last_os_error());
     }
     let file = unsafe { File::from_raw_handle(handle.cast()) };
-    if !file.metadata()?.is_file() || file.metadata()?.file_type().is_symlink() {
+    if !file.metadata()?.is_file() || is_reparse_point(&file.metadata()?) {
         return Err(io::Error::other(
             "Protected TermKey path is not a regular file",
         ));
@@ -290,7 +296,7 @@ pub(super) fn protect_file(file: &File) -> io::Result<()> {
 pub(super) fn ensure_private_directory(path: &Path) -> io::Result<()> {
     let descriptor = PrivateDescriptor::new(true)?;
     match fs::symlink_metadata(path) {
-        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
+        Ok(metadata) if !metadata.is_dir() || is_reparse_point(&metadata) => {
             return Err(io::Error::other(
                 "Protected TermKey directory is not an ordinary directory",
             ));
@@ -330,7 +336,7 @@ pub(super) fn ensure_private_directory(path: &Path) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     let directory = unsafe { File::from_raw_handle(handle.cast()) };
-    if !directory.metadata()?.is_dir() || directory.metadata()?.file_type().is_symlink() {
+    if !directory.metadata()?.is_dir() || is_reparse_point(&directory.metadata()?) {
         return Err(io::Error::other(
             "Protected TermKey directory changed while opening",
         ));
@@ -398,6 +404,28 @@ mod tests {
         assert_eq!(denied.kind(), io::ErrorKind::PermissionDenied);
         // The existing handle still has WRITE_DAC so cleanup is deterministic.
         protect_file(&file).unwrap();
+    }
+
+    #[test]
+    fn junction_leaf_is_rejected_without_touching_target() {
+        let root = TempDir::new().unwrap();
+        let target = root.path().join("ordinary target");
+        let link = root.path().join("junction");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("sentinel"), b"preserve").unwrap();
+        let output = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "could not create synthetic junction"
+        );
+        assert!(ensure_private_directory(&link).is_err());
+        assert_eq!(fs::read(target.join("sentinel")).unwrap(), b"preserve");
+        fs::remove_dir(&link).unwrap();
     }
 
     #[test]

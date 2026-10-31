@@ -161,6 +161,7 @@ pub(crate) fn with_vault_lock<T>(
     operation: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
     let parent = parent_dir(vault_path);
+    crate::platform::fs::ensure_private_directory(parent)?;
     let lock_path = parent.join("vault.lock");
     let lock_file = crate::platform::fs::open_private_lock(&lock_path)?;
     FileExt::lock(&lock_file)?;

@@ -8,16 +8,24 @@ pub(crate) fn ensure_private_directory(path: &Path) -> io::Result<()> {
     reject_symlink(path)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-        let mut builder = fs::DirBuilder::new();
-        builder.recursive(true).mode(0o700);
-        builder.create(path)?;
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(not(target_os = "macos"))]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = fs::DirBuilder::new();
+            builder.recursive(true).mode(0o700);
+            builder.create(path)?;
+        }
+        #[cfg(target_os = "macos")]
+        super::macos_fs::create_directories(path)?;
         let directory = fs::OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
             .open(path)?;
         require_current_owner(&directory)?;
-        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+        set_private_mode(&directory, 0o700)?;
+        #[cfg(target_os = "macos")]
+        super::macos_fs::protect(&directory)?;
     }
     #[cfg(windows)]
     super::windows_fs::ensure_private_directory(path)?;
@@ -27,9 +35,13 @@ pub(crate) fn ensure_private_directory(path: &Path) -> io::Result<()> {
 /// Open a lock file without following links; a new file is private at creation.
 pub(crate) fn open_private_lock(path: &Path) -> io::Result<File> {
     reject_symlink(path)?;
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        super::macos_fs::open_private(path, false)
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -42,7 +54,7 @@ pub(crate) fn open_private_lock(path: &Path) -> io::Result<File> {
             return Err(io::Error::other("TermKey lock path is not a regular file"));
         }
         require_current_owner(&file)?;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        set_private_mode(&file, 0o600)?;
         Ok(file)
     }
     #[cfg(windows)]
@@ -52,16 +64,22 @@ pub(crate) fn open_private_lock(path: &Path) -> io::Result<File> {
 }
 
 pub(crate) fn create_private_file(path: &Path) -> io::Result<File> {
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
+    {
+        super::macos_fs::open_private(path, true)
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create_new(true)
             .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW)
-            .open(path)
+            .open(path)?;
+        protect_file(&file)?;
+        Ok(file)
     }
     #[cfg(windows)]
     {
@@ -97,9 +115,11 @@ pub(crate) fn open_private_read(path: &Path) -> io::Result<File> {
 pub(crate) fn protect_file(file: &File) -> io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         require_current_owner(file)?;
-        file.set_permissions(fs::Permissions::from_mode(0o600))
+        set_private_mode(file, 0o600)?;
+        #[cfg(target_os = "macos")]
+        super::macos_fs::protect(file)?;
+        Ok(())
     }
     #[cfg(windows)]
     {
@@ -107,15 +127,39 @@ pub(crate) fn protect_file(file: &File) -> io::Result<()> {
     }
 }
 
+fn is_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        super::windows_fs::is_reparse_point(metadata)
+    }
+    #[cfg(unix)]
+    {
+        metadata.file_type().is_symlink()
+    }
+}
+
 fn reject_symlink(path: &Path) -> io::Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(io::Error::other(
+        Ok(metadata) if is_link(&metadata) => Err(io::Error::other(
             "Refusing a symbolic link for a protected TermKey path",
         )),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
+}
+
+#[cfg(unix)]
+fn set_private_mode(file: &File, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(fs::Permissions::from_mode(mode))?;
+    if file.metadata()?.permissions().mode() & 0o777 != mode {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Filesystem did not enforce private TermKey permissions",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]

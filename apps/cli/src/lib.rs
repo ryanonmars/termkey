@@ -15,7 +15,13 @@ use std::path::Path;
 
 /// Validate storage paths before any command can create sensitive files.
 pub fn initialize_storage_paths() -> error::Result<()> {
-    platform::paths::validate()
+    let paths = platform::paths::resolve()?;
+    for directory in [&paths.data_dir, &paths.config_dir] {
+        if directory.exists() {
+            platform::fs::ensure_private_directory(directory)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn apply_configured_vault_dir_override() {
