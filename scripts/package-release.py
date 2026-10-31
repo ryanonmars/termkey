@@ -344,7 +344,9 @@ def verify_native(info, executable, version, require_signature=False, team_id=No
     if require_signature:
         if host_os != "macos" or not team_id or not re.fullmatch(r"[A-Z0-9]{10}", team_id):
             raise ValueError("macOS signature verification requires a valid --team-id")
-        subprocess.run(["codesign", "--verify", "--strict", "--verbose=2", str(executable)], check=True, capture_output=True)
+        # A valid Developer ID signature alone does not prove that the extracted
+        # standalone tool has a notarization ticket. ZIPs cannot be stapled.
+        subprocess.run(["codesign", "--verify", "--strict", "-R=notarized", "--check-notarization", "--verbose=2", str(executable)], check=True, capture_output=True)
         details = subprocess.run(["codesign", "-dv", "--verbose=4", str(executable)], check=True, capture_output=True, text=True).stderr
         if not all(re.search(pattern, details, re.M) for pattern in (
             rf"^TeamIdentifier={re.escape(team_id)}$", rf"^Authority=Developer ID Application: .* \({re.escape(team_id)}\)$",

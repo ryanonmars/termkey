@@ -131,3 +131,49 @@ reject(lambda:module.verify_native(info,pathlib.Path('/synthetic/executable'),'1
 `);
   assert.equal(result.status, 0, result.stderr);
 });
+
+test('trusted native Mac ZIP verification requires an available notarization ticket on both architectures', () => {
+  const result = runPython(harness + String.raw`
+module.platform.system=lambda:'Darwin'
+team='ABCDEFGHIJ'
+calls=[]
+deny_ticket=False
+def signed_smoke(arguments,**kwargs):
+ calls.append(arguments)
+ if arguments[0]=='codesign':
+  if '--verify' in arguments:
+   assert '--check-notarization' in arguments
+   assert '-R=notarized' in arguments
+   assert kwargs['check'] is True
+   if deny_ticket:
+    raise module.subprocess.CalledProcessError(1,arguments,stderr='notarization ticket unavailable')
+   return module.subprocess.CompletedProcess(arguments,0,stdout='',stderr='')
+  assert arguments[1:3]==['-dv','--verbose=4']
+  return module.subprocess.CompletedProcess(arguments,0,stdout='',stderr='Authority=Developer ID Application: Synthetic Tests ('+team+')\nTeamIdentifier='+team+'\nTimestamp=synthetic timestamp\nRuntime Version=15.0.0\n')
+ output='termkey 1.2.3\n' if arguments[-1]=='--version' else 'Encrypted storage for synthetic fixtures'
+ return module.subprocess.CompletedProcess(arguments,0,stdout=output,stderr='')
+module.subprocess.run=signed_smoke
+with tempfile.TemporaryDirectory() as temporary:
+ root=pathlib.Path(temporary)
+ for info in module.TARGETS:
+  if info['os']!='macos': continue
+  module.platform.machine=lambda:'arm64' if info['arch']=='arm64' else 'x86_64'
+  source=root/info['target']; source.write_bytes(binary(info))
+  archive=module.package(info,source,root,'1.2.3')
+  calls.clear(); deny_ticket=False
+  module.verify(info,archive,run=True,require_signature=True,team_id=team)
+  assert len(calls)==4
+  assert calls[0][:6]==['codesign','--verify','--strict','-R=notarized','--check-notarization','--verbose=2']
+  assert [call[-1] for call in calls[2:]]==['--version','--help']
+  calls.clear(); deny_ticket=True
+  try:
+   module.verify(info,archive,run=True,require_signature=True,team_id=team)
+  except module.subprocess.CalledProcessError: pass
+  else: raise AssertionError('trusted ZIP with no notarization ticket was accepted')
+  assert len(calls)==1, 'a tool without a verified ticket must not be executed'
+  calls.clear()
+  module.verify(info,archive,run=True)
+  assert [call[-1] for call in calls]==['--version','--help'], 'unsigned validation must not require Apple services'
+`);
+  assert.equal(result.status, 0, result.stderr);
+});
