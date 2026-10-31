@@ -336,7 +336,7 @@ def package(info, binary, output_directory, version):
     return destination
 
 
-def verify_native(info, executable, require_signature=False, team_id=None):
+def verify_native(info, executable, version, require_signature=False, team_id=None):
     host_os = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}.get(platform.system())
     host_arch = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x64", "AMD64": "x64"}.get(platform.machine())
     if (host_os, host_arch) != (info["os"], info["arch"]):
@@ -353,9 +353,9 @@ def verify_native(info, executable, require_signature=False, team_id=None):
             raise ValueError("macOS executable does not meet Developer ID/runtime/timestamp requirements")
     with tempfile.TemporaryDirectory(prefix="termkey-release-smoke-") as directory:
         environment = dict(os.environ, TERMKEY_VAULT_DIR=directory, TERMKEY_SPLASH_MS="0", TERMKEY_GRAPHICS="off")
-        for argument, expected in (("--version", "termkey "), ("--help", "Encrypted storage for")):
+        for argument, expected in (("--version", f"termkey {version}"), ("--help", "Encrypted storage for")):
             result = subprocess.run([str(executable), argument], env=environment, capture_output=True, text=True, timeout=30, check=True)
-            if expected not in result.stdout:
+            if (argument == "--version" and result.stdout.strip() != expected) or expected not in result.stdout:
                 raise ValueError(f"native {argument} smoke test returned unexpected output")
         if any(Path(directory).iterdir()):
             raise ValueError("help/version smoke tests unexpectedly created vault data")
@@ -381,14 +381,15 @@ def verify(info, archive_path, run=False, require_signature=False, team_id=None)
             raise ValueError("archive license is missing or incorrect")
         validate_notices(archive.read("THIRD-PARTY-LICENSES.txt"))
         instructions = archive.read("README.txt").decode("utf-8")
-        if info["target"] not in instructions or "termkey reset" not in instructions:
+        header = re.match(r"TermKey (\d+\.\d+\.\d+) — " + re.escape(info["target"]) + r"\n", instructions)
+        if header is None or "termkey reset" not in instructions:
             raise ValueError("archive installation instructions do not match target")
         if run or require_signature:
             with tempfile.TemporaryDirectory(prefix="termkey-release-extract-") as directory:
                 executable = Path(directory) / info["executable"]
                 executable.write_bytes(data)
                 executable.chmod(0o755)
-                verify_native(info, executable, require_signature, team_id)
+                verify_native(info, executable, header.group(1), require_signature, team_id)
 
 
 def main():

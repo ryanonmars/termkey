@@ -114,3 +114,20 @@ test('manifest has exactly the requested targets and preserves existing Apple Si
   assert.equal(targets.find(item => item.target === 'aarch64-apple-darwin').archive, 'termkey-macos-aarch64.zip');
   assert.equal(targets.find(item => item.os === 'windows').executable, 'termkey.exe');
 });
+
+test('native smoke rejects a stale executable even when its archive has the requested version', () => {
+  const result = runPython(harness + String.raw`
+module.platform.system=lambda:'Linux'
+module.platform.machine=lambda:'x86_64'
+info=module.target_info('x86_64-unknown-linux-musl')
+version='1.2.3'
+def smoke(arguments,**kwargs):
+ output='termkey '+version+'\n' if arguments[-1]=='--version' else 'Encrypted storage for synthetic fixtures'
+ return module.subprocess.CompletedProcess(arguments,0,stdout=output,stderr='')
+module.subprocess.run=smoke
+module.verify_native(info,pathlib.Path('/synthetic/executable'),'1.2.3')
+version='1.0.0'
+reject(lambda:module.verify_native(info,pathlib.Path('/synthetic/executable'),'1.2.3'))
+`);
+  assert.equal(result.status, 0, result.stderr);
+});
