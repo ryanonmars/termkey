@@ -69,6 +69,7 @@ pub struct App {
     should_quit: bool,
     clipboard_clear_time: Option<Instant>,
     clipboard_cleanup: Option<crate::clipboard::ClipboardCleanup>,
+    clipboard_text: Option<crate::clipboard::TextClipboard>,
     pending_export_password: Option<String>,
     pending_export_name: Option<String>,
     pending_new_password: Option<Zeroizing<String>>,
@@ -153,6 +154,7 @@ impl App {
             should_quit: false,
             clipboard_clear_time: None,
             clipboard_cleanup: None,
+            clipboard_text: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,
@@ -184,7 +186,8 @@ impl App {
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind != KeyEventKind::Release {
-                        self.handle_key(key.code, key.modifiers)?;
+                        let result = self.handle_key(key.code, key.modifiers);
+                        self.handle_action_result(result)?;
                     }
                 }
             } else if let AppView::CopyCountdown {
@@ -275,6 +278,19 @@ impl App {
             Err(TryRecvError::Disconnected) => {
                 self.update_check_rx = None;
             }
+        }
+    }
+
+    fn handle_action_result(&mut self, result: Result<()>) -> Result<()> {
+        if matches!(result, Err(TermKeyError::Clipboard(_))) {
+            self.show_message(
+                "Clipboard unavailable".into(),
+                "No supported system clipboard is available. Your vault remains open. Clipboard access requires a graphical desktop session; no secret was printed.".into(),
+                true,
+            );
+            Ok(())
+        } else {
+            result
         }
     }
 
@@ -531,6 +547,7 @@ impl App {
                     let _ = cleanup.clear_now();
                 }
                 self.clipboard_clear_time = None;
+                self.clipboard_text = None;
                 self.pending_new_password = None;
                 self.pending_export_password = None;
                 self.pending_export_name = None;
@@ -1123,15 +1140,9 @@ impl App {
         Ok(())
     }
 
-    fn copy_text_to_clipboard(&self, text: &str) -> Result<()> {
-        use arboard::Clipboard;
-
-        let mut clipboard = Clipboard::new().map_err(|e| {
-            TermKeyError::Clipboard(format!("failed to access system clipboard: {}", e))
-        })?;
-        clipboard
-            .set_text(text.to_string())
-            .map_err(|e| TermKeyError::Clipboard(format!("failed to write clipboard: {}", e)))
+    fn copy_text_to_clipboard(&mut self, text: &str) -> Result<()> {
+        self.clipboard_text = Some(crate::clipboard::copy_text(text)?);
+        Ok(())
     }
 
     // ─── Navigation ──────────────────────────────────────────────────
@@ -1693,6 +1704,7 @@ mod tests {
             should_quit: false,
             clipboard_clear_time: None,
             clipboard_cleanup: None,
+            clipboard_text: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,
@@ -1763,6 +1775,20 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_clipboard_keeps_vault_open_and_does_not_display_backend_data() {
+        let (_dir, _path, mut app) = app_with_protected_entry();
+        let result = Err(crate::error::TermKeyError::Clipboard(
+            "synthetic backend detail".into(),
+        ));
+        app.handle_action_result(result).unwrap();
+        assert!(app.session.is_some());
+        assert!(
+            matches!(&app.view, AppView::Message { message, is_error: true, .. }
+            if message.contains("vault remains open") && !message.contains("synthetic backend detail"))
+        );
+    }
+
+    #[test]
     fn tui_export_prompts_with_an_editable_default_backup_name() {
         let (_dir, _path, mut app) = app_with_protected_entry();
 
@@ -1798,6 +1824,7 @@ mod tests {
             should_quit: false,
             clipboard_clear_time: None,
             clipboard_cleanup: None,
+            clipboard_text: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,

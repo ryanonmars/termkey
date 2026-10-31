@@ -45,6 +45,25 @@ impl ClipboardBackend for ArboardBackend {
     }
 }
 
+/// Keeps selection-owned Linux clipboard data available while the TUI is open.
+pub struct TextClipboard {
+    _backend: ArboardBackend,
+}
+
+pub fn copy_text(text: &str) -> Result<TextClipboard> {
+    let mut backend = ArboardBackend::new()?;
+    let coordinator = clipboard_coordinator();
+    let mut ownership = coordinator.lock().map_err(|_| {
+        TermKeyError::Clipboard("clipboard ownership coordinator is unavailable".into())
+    })?;
+    backend
+        .set_text(text.to_owned())
+        .map_err(|_| TermKeyError::Clipboard("could not write to the system clipboard".into()))?;
+    // An earlier secret timer must not clear this newer, explicit copy.
+    ownership.current = None;
+    Ok(TextClipboard { _backend: backend })
+}
+
 #[derive(Debug)]
 pub struct ClipboardCleanup {
     receiver: mpsc::Receiver<()>,
