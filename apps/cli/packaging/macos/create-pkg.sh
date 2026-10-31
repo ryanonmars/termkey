@@ -17,11 +17,6 @@ if [[ ! -f "$binary_path" ]]; then
   exit 1
 fi
 
-if [[ "$("$binary_path" --version)" != "termkey $version" ]]; then
-  echo "executable version does not match package version $version" >&2
-  exit 1
-fi
-
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
@@ -161,6 +156,11 @@ verify_macho_target() {
       ;;
   esac
 }
+
+if [[ "$("$binary_path" --version)" != "termkey $version" ]]; then
+  echo "executable version does not match package version $version" >&2
+  exit 1
+fi
 
 mkdir -p "$cli_install_dir" "$output_dir"
 mkdir -p "$swift_cache_dir"
