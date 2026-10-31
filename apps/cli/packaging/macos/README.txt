@@ -7,7 +7,9 @@ TermKey, its command-line tool, and its uninstaller.
 Requirements
 ------------
 
-TermKey supports Apple Silicon Macs running macOS 11 or newer.
+This installer supports Apple Silicon Macs running macOS 11 or newer.
+Intel Mac, Linux, and Windows portable distributions use separate native ZIPs;
+this disk image does not install those versions.
 
 Install
 -------
@@ -28,3 +30,13 @@ The uninstaller clearly identifies the retained vault folder and provides a
 copyable command to permanently remove its vault data and settings afterward.
 Exported backups are preserved; delete unwanted backup files separately.
 You can also run termkey reset before uninstalling.
+
+Portable ZIPs and integrity
+--------------------------
+
+The Apple Silicon portable ZIP remains named termkey-macos-aarch64.zip for
+compatibility. Intel uses termkey-macos-x64.zip. Download SHA256SUMS from the
+same release and compare the archive's SHA-256 before extracting. Each ZIP
+contains termkey, LICENSE, and README.txt. Production Mac binaries are Developer
+ID signed and notarized; keep Gatekeeper enabled. ZIP extraction may require
+chmod 755 termkey before running a manually installed copy.

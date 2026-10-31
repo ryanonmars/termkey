@@ -633,9 +633,9 @@
         <div class="feat-row">
           <span class="feat-check">✓</span>
           <div class="feat-content">
-            <span class="f-key">~/.termkey/</span>
+            <span class="f-key">private local files</span>
             <span class="f-val">local-only storage</span>
-            <span class="f-desc">no network access, no cloud sync</span>
+            <span class="f-desc">no vault sync or cloud account; update checks use GitHub</span>
           </div>
         </div>
       </div>
@@ -653,6 +653,7 @@
       <div class="sub-tabs">
         <button class="sub-tab active" onclick="switchSub('macos','dl',this)">Signed DMG</button>
         <button class="sub-tab"        onclick="switchSub('macos','brew',this)">Homebrew</button>
+        <button class="sub-tab"        onclick="switchSub('macos','zip',this)">Native ZIPs</button>
       </div>
       <div class="sub-panel active" id="subpanel-macos-dl">
         <div class="install-card">
@@ -669,12 +670,25 @@
       </div>
       <div class="sub-panel" id="subpanel-macos-brew">
         <div class="install-card">
-          <p class="install-intro">Install from the TermKey tap and update with <code>brew upgrade termkey</code>.</p>
+          <p class="install-intro">The prepared tap selects the matching macOS or Linux ZIP. New platforms become release-ready only after native verification; Homebrew also has its own host support limits. Update with <code>brew upgrade termkey</code>.</p>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
             <code class="copy-source" hidden>brew install ryanonmars/termkey/termkey</code>
             <span class="p">$ </span>brew install ryanonmars/termkey/termkey
           </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="subpanel-macos-zip">
+        <div class="install-card">
+          <p class="install-intro">Choose your operating system and CPU. New platform archives are release candidates until native security and runtime checks pass; check the release notes before use.</p>
+          <div class="dl-grid">
+            <a class="dl-btn" href="https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.zip">macOS ZIP <span class="arch">Apple Silicon</span></a>
+            <a class="dl-btn" href="https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-x64.zip">macOS ZIP <span class="arch">Intel · candidate</span></a>
+            <a class="dl-btn" href="https://github.com/ryanonmars/termkey/releases/latest/download/termkey-linux-x64.zip">Linux ZIP <span class="arch">x86_64 MUSL · candidate</span></a>
+            <a class="dl-btn" href="https://github.com/ryanonmars/termkey/releases/latest/download/termkey-linux-arm64.zip">Linux ZIP <span class="arch">ARM64 MUSL · candidate</span></a>
+            <a class="dl-btn" href="https://github.com/ryanonmars/termkey/releases/latest/download/termkey-windows-x64.zip">Windows ZIP <span class="arch">x86_64 · candidate</span></a>
+          </div>
+          <div class="install-note">Verify the ZIP against <a href="https://github.com/ryanonmars/termkey/releases/latest/download/SHA256SUMS">SHA256SUMS</a> from the same release. Every ZIP includes its native executable, license, and installation instructions. Windows uses a user-writable folder and PowerShell; no MSI or WinGet is needed. <a href="https://github.com/ryanonmars/termkey#install">Full PATH, permission, migration, and removal instructions</a>.</div>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@
 
 Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `termkey` for the full-screen TUI, or use subcommands for direct terminal workflows. **XChaCha20-Poly1305** + **Argon2id**. Zero cloud. Zero trust.
 
-- **Vault path:** `~/.termkey/`
+- **Vault path:** platform-specific private local storage (see below)
 - **Secret types:** private keys, seed phrases, passwords
 - **Networks:** Ethereum, Bitcoin, Solana, or a custom network label
 - **Extras:** encrypted backup/import, optional random recovery phrase, strong password generation for password entries, address derivation for supported crypto entries
@@ -19,25 +19,200 @@ Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `
 |---|---|
 | **XChaCha20-Poly1305** | AEAD cipher with a 192-bit nonce for authenticated encryption |
 | **Argon2id** | Memory-hard KDF for deriving encryption keys from your master password |
-| **Local-only storage** | Vault data lives under `~/.termkey/` with no cloud sync or remote service |
+| **Local-only storage** | Vault data stays in private local files; no TermKey cloud sync or account |
 
 ---
 
+## Platforms and release status
+
+The existing supported release is **macOS Apple Silicon, macOS 11 or later**.
+This branch prepares the following release targets. New platforms are release
+candidates until their native CI, security tests, and clean-machine checks pass;
+a successful cross-compilation alone does not establish runtime support.
+
+| Platform | Rust target | Release ZIP | Verification required before release |
+|---|---|---|---|
+| macOS Apple Silicon | `aarch64-apple-darwin` | `termkey-macos-aarch64.zip` | Native tests; signed/notarized download and installer checks |
+| macOS Intel | `x86_64-apple-darwin` | `termkey-macos-x64.zip` | Native Intel tests; signed/notarized ZIP; macOS 11 minimum |
+| Linux x86_64 | `x86_64-unknown-linux-musl` | `termkey-linux-x64.zip` | Native MUSL tests; static linkage; clean Linux and clipboard checks |
+| Linux ARM64 | `aarch64-unknown-linux-musl` | `termkey-linux-arm64.zip` | Native ARM64 MUSL tests; static linkage; clean Linux and clipboard checks |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `termkey-windows-x64.zip` | Native Windows security tests; Windows Terminal/PowerShell; standard-user checks |
+
+The Apple Silicon ZIP name is deliberately unchanged for existing download and
+Homebrew users. Other names use `x64`/`arm64`; release tags version the download
+URLs. The existing signed/notarized Apple Silicon DMG remains available. New ZIPs
+are available only after an authorized, verified release is published.
+
 ## Install
 
-### Apple Silicon macOS 11 or later
-
-TermKey Phase 1 supports Apple Silicon Macs running macOS 11 or later.
-
-**Signed and notarized DMG:** [Download TermKey for Apple Silicon](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.dmg). Open the DMG and follow its installation instructions.
-
-**Homebrew:**
+### Homebrew — macOS and Linux
 
 ```bash
 brew install ryanonmars/termkey/termkey
+termkey
 ```
 
-Run `termkey` to open the vault. `termkey update` checks the latest TermKey release; for a Homebrew install it runs the required Homebrew upgrade flow.
+The prepared formula selects the same native ZIP offered for manual downloads.
+The live tap changes only when a verified release is authorized and published.
+Homebrew has its own OS/architecture support policy; this does not define the
+minimum OS of a standalone TermKey executable. In particular, Intel macOS and
+older macOS versions have limited upstream Homebrew support. Use the matching
+ZIP when Homebrew is unavailable. See [Homebrew support tiers](https://docs.brew.sh/Support-Tiers).
+
+### Existing Apple Silicon installer
+
+[Download the signed/notarized DMG](https://github.com/ryanonmars/termkey/releases/latest/download/termkey-macos-aarch64.dmg).
+Open it and run the included installer. It installs the app launcher, command-line
+tool, and companion uninstaller. This installer remains Apple Silicon only.
+
+### Manual ZIP — macOS and Linux
+
+Download the matching ZIP and `SHA256SUMS` from the **same** [GitHub Release](https://github.com/ryanonmars/termkey/releases).
+Check the ZIP's SHA-256 against its line in the manifest before extraction:
+
+```bash
+# macOS example; use termkey-macos-x64.zip on Intel
+shasum -a 256 termkey-macos-aarch64.zip
+
+# Linux example; use termkey-linux-arm64.zip on ARM64
+sha256sum termkey-linux-x64.zip
+```
+
+From the download folder, extract your selected ZIP, then install its executable:
+
+```bash
+# Substitute the matching ZIP filename from the table above
+unzip termkey-linux-x64.zip
+mkdir -p "$HOME/.local/bin"
+chmod 755 termkey
+cp termkey "$HOME/.local/bin/termkey"
+export PATH="$HOME/.local/bin:$PATH"
+termkey --help
+termkey
+```
+
+Add the `export PATH=...` line to your shell startup file, such as `~/.zshrc` or
+`~/.bashrc`, for future terminals. ZIP extractors may lose executable permissions;
+`chmod 755` restores them. No Rust installation is needed. Production macOS ZIPs
+must be signed and notarized; keep Gatekeeper enabled and verify the release's
+origin if macOS warns about a download.
+
+### Portable ZIP — Windows x86_64
+
+Use Windows Terminal with PowerShell. Download `termkey-windows-x64.zip` and
+`SHA256SUMS` from the same release. Compare the displayed SHA-256 to the manifest:
+
+```powershell
+Get-FileHash .\termkey-windows-x64.zip -Algorithm SHA256
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\TermKey'
+Expand-Archive .\termkey-windows-x64.zip -DestinationPath $installDir
+& (Join-Path $installDir 'termkey.exe') --help
+& (Join-Path $installDir 'termkey.exe')
+```
+
+Add `$installDir` to **your user PATH** through Windows Settings, or run:
+
+```powershell
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (($userPath -split ';') -notcontains $installDir) {
+    [Environment]::SetEnvironmentVariable('Path', "$installDir;$userPath", 'User')
+}
+$env:Path = "$installDir;$env:Path"
+termkey --help
+```
+
+Administrator rights, MSI, WinGet, Rust, and a separate Visual C++ runtime are not
+required by the portable distribution design. Release verification must confirm
+this on a clean standard-user machine. New downloads may trigger Windows
+SmartScreen/reputation warnings, even when signed. Check the source and checksum;
+do not disable Windows security features. Windows client-version and desktop
+verification are required before claiming release support.
+
+## Vault locations and permissions
+
+| Platform or override | Vault data | Configuration/recovery settings |
+|---|---|---|
+| macOS | `~/.termkey/vault.ck` | `~/.termkey/config.json` |
+| Windows | `%USERPROFILE%\.termkey\vault.ck` | `%USERPROFILE%\.termkey\config.json` |
+| New Linux installation | `$XDG_DATA_HOME/termkey/vault.ck`, default `~/.local/share/termkey/vault.ck` | `$XDG_CONFIG_HOME/termkey/config.json`, default `~/.config/termkey/config.json` |
+| Existing Linux `~/.termkey` installation | Existing files stay in place | Existing co-located configuration stays in place |
+| Absolute `TERMKEY_VAULT_DIR` | `<directory>/vault.ck` | `<directory>/config.json` |
+
+Use a private local directory, separate from the application installation folder.
+TermKey enforces owner-restricted Unix permissions or Windows current-user ACLs
+for sensitive files and reports protection failures. Filesystems that cannot
+provide the required protection are not a safe vault/export destination. Copying
+files manually may change their permissions; reapply private destination access.
+Do not share a writable vault directory between accounts or place it in a
+synchronized/cloud folder if you require local-only storage.
+
+## Updating, reset, and uninstall
+
+`termkey update` uses Homebrew for a detected Homebrew installation; portable
+installations receive the matching release download instructions. With Homebrew:
+
+```bash
+brew upgrade termkey
+```
+
+For a ZIP upgrade, close TermKey, verify the new matching archive, and replace
+only the installed executable. Preserve your vault and configuration. On Windows,
+close all running copies before replacing `termkey.exe`.
+
+`termkey reset` permanently removes the active vault and settings after
+confirmation, keeps the application installed, and preserves exported backups.
+Settings also offers **Reset vault and settings**. Type `DELETE` to confirm.
+
+`termkey uninstall` preserves vault data, settings, and backups. Homebrew uses its
+package manager; the macOS installer uses its companion uninstaller. Portable
+Windows removal requires the executable to be closed before deletion. Follow the
+platform-specific instructions printed by the command. Before and after removal,
+TermKey identifies retained vault data and provides a cleanup command that still
+works without the application. Delete unwanted exported backups separately.
+
+## Moving an encrypted vault between operating systems
+
+The encryption and file formats are unchanged and contain no Keychain, DPAPI,
+or hardware binding. Cross-platform fixture exchange is a required release gate.
+
+The simplest transfer is an encrypted backup:
+
+1. Export with `termkey export <directory>` and choose a backup password.
+2. Move the encrypted `.termkey` file to the destination.
+3. Create/unlock the destination vault and run `termkey import <backup-file>`.
+4. Enter the **backup password**, not necessarily either vault's master password.
+5. Configure recovery for the destination vault. Secondary passwords on imported
+   protected entries remain required.
+
+Exports contain entries, not local configuration or the source recovery setup.
+Do not rename an exported backup to `vault.ck`: backups and raw vaults have
+different magic values.
+
+For a raw-vault transfer, close every TermKey instance before copying `vault.ck`.
+Preserve its matching recovery configuration if you need the same recovery phrase.
+Do not blindly reuse an old absolute `vault_path` from another OS: update the
+local configuration/override to the destination path. Restore private file access
+before opening the copy. Existing legacy decoding and migration remain supported;
+no conversion or encryption change is required for another platform.
+
+## Security and terminal limitations
+
+Master passwords and secrets are not sent in update requests. GitHub update
+checks can occur at startup; vault operations otherwise require no online account.
+Zeroization and process hardening reduce exposure but do not guarantee that no
+sensitive data reaches OS paging, crash dumps, terminal history, screenshots, or
+other processes. Memory locking and dump prevention have OS-specific limits.
+
+Secret clipboard copies clear only while TermKey still owns the unchanged value.
+Clearing is best effort and cannot erase Windows clipboard history/cloud clipboard,
+third-party clipboard managers, or an external application's retained copy.
+Linux requires an available X11 or supported Wayland clipboard protocol; some
+compositors and headless/SSH sessions provide none. An unavailable clipboard
+returns an error without printing the secret; other vault operations remain usable.
+Optional Kitty/iTerm graphics fall back to text. Set `TERMKEY_GRAPHICS=off` or
+`TERMKEY_SPLASH_MS=0` to disable the splash graphics/delay. Use an interactive
+terminal for hidden password prompts and the TUI; do not put passwords in shell
+arguments or command history.
 
 ---
 

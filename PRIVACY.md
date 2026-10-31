@@ -1,14 +1,14 @@
 # TermKey Privacy Policy
 
-**Effective date: 2026-10-30**
+**Effective date: 2026-10-31**
 
 TermKey is a local encrypted vault with terminal and command-line interfaces.
 
 ## Local vault and retention
 
-Your vault is stored locally under `~/.termkey/`, or a location you configure. Saved entries remain in your vault until you delete them or remove the vault. Encrypted backups remain wherever you export them.
+Your vault is stored locally under `~/.termkey/` on macOS, `%USERPROFILE%\.termkey` on Windows, or the XDG data directory on new Linux installations (`~/.local/share/termkey` by default). Linux configuration/recovery settings use the XDG configuration directory (`~/.config/termkey` by default); existing Linux `~/.termkey` installations remain in place. An absolute `TERMKEY_VAULT_DIR` override co-locates vault and configuration in the chosen directory. Saved entries remain in your vault until you delete them or remove the vault. Encrypted backups remain wherever you export them.
 
-`termkey reset` removes local vault data and settings while preserving encrypted backups and keeping TermKey installed. `termkey uninstall` removes the application while preserving vault data, settings, and encrypted backups. Installer installations use their companion uninstaller.
+`termkey reset` removes local vault data and settings while preserving encrypted backups and keeping TermKey installed. `termkey uninstall` removes the application while preserving vault data, settings, and encrypted backups. macOS installer installations use their companion uninstaller. Portable Windows installations provide close-and-remove instructions. Uninstall identifies retained data and supplies a platform-specific cleanup command.
 
 ## Network use and disclosures
 
@@ -17,6 +17,16 @@ TermKey checks GitHub's latest-release API when it performs an update check, inc
 When you choose to open a URL stored with an entry, TermKey opens that URL in your default browser. The destination site receives ordinary connection information under its own policies.
 
 TermKey does not sell personal information or use analytics or advertising SDKs. Vault secrets, master passwords, secondary passwords, and generated passwords are not transmitted to the developer or to third parties.
+
+## Clipboard and operating-system services
+
+Clipboard operations use the local operating system. Timed clearing is best effort
+and does not erase copies retained by clipboard managers, Windows clipboard
+history/cloud clipboard, or other applications. Any OS-level clipboard
+synchronization is controlled by the operating system, not a TermKey service.
+Linux clipboard access depends on an available X11 or supported Wayland session;
+headless environments may have no clipboard. The application does not send a
+secret to stdout or a network service as a clipboard fallback.
 
 ## Contact
 
