@@ -115,6 +115,19 @@ jobs:
               test "$count" = 1
               su -s /bin/sh clipboardtest -c "TERMKEY_TEST_CLIPBOARD_SANDBOX=1 scripts/test-linux-clipboard.sh $test_binary"
             '
+      - name: Verify native Windows clipboard and interactive console
+        if: matrix.os == 'windows'
+        timeout-minutes: 5
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          TERMKEY_TEST_WINDOWS_CLIPBOARD: '1'
+          TERMKEY_TEST_WINDOWS_CONSOLE: '1'
+        run: |
+          cargo test --locked --target "$env:TARGET" --test clipboard_windows -- --ignored --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/test-windows-terminal.py --binary "target/$env:TARGET/release/termkey.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Make synthetic fixtures readable by artifact uploader
         if: matrix.os == 'linux'
         shell: bash

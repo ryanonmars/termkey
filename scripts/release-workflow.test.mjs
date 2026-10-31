@@ -74,6 +74,14 @@ test('native CI builds every requested target and exchanges production vaults in
   assert.match(nativeCommands, /su -s \/bin\/sh clipboardtest/);
   assert.match(nativeCommands, /setcap -r \/usr\/bin\/sway/);
   assert.doesNotMatch(nativeCommands, /--privileged|--cap-add/);
+  const windowsRuntime = native.jobs.native.steps.find((step) => step.name === 'Verify native Windows clipboard and interactive console');
+  assert.equal(windowsRuntime.if, "matrix.os == 'windows'");
+  assert.equal(windowsRuntime.shell, 'pwsh');
+  assert.equal(windowsRuntime.env.TERMKEY_TEST_WINDOWS_CLIPBOARD, '1');
+  assert.equal(windowsRuntime.env.TERMKEY_TEST_WINDOWS_CONSOLE, '1');
+  assert.match(windowsRuntime.run, /--test clipboard_windows -- --ignored --test-threads=1/);
+  assert.match(windowsRuntime.run, /python scripts\/test-windows-terminal\.py --binary/);
+  assert.equal((windowsRuntime.run.match(/exit \$LASTEXITCODE/g) ?? []).length, 2);
   const verifier = native.jobs.portability;
   assert.match(verifier.steps.find((step) => step.uses?.startsWith('actions/download-artifact')).with.pattern, /termkey-fixtures-\*/);
   for (const step of verifier.steps.filter((step) => step.name?.startsWith('Verify cross-platform'))) {
