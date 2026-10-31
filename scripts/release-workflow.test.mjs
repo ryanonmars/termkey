@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 const scriptPath = new URL('./release-workflow.test.mjs', import.meta.url);
-const repositoryRoot = path.resolve(path.dirname(scriptPath.pathname), '..');
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(scriptPath)), '..');
 const workflowPath = path.join(repositoryRoot, '.github/workflows/release.yml');
 const packageJsonPath = path.join(repositoryRoot, 'package.json');
 const packageScriptPath = path.join(
@@ -25,7 +26,7 @@ const appleSecrets = [
   'APPLE_TEAM_ID',
 ];
 
-function parseWorkflow() {
+function parseWorkflow(filename = workflowPath) {
   const ruby = [
     "require 'yaml'",
     "require 'json'",
@@ -33,12 +34,68 @@ function parseWorkflow() {
     "workflow['on'] = workflow.delete(true) if workflow.key?(true)",
     'puts JSON.generate(workflow)',
   ].join('; ');
-  const result = spawnSync('ruby', ['-e', ruby, workflowPath], { encoding: 'utf8' });
+  const result = spawnSync('ruby', ['-e', ruby, filename], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
 
 const workflow = parseWorkflow();
+const targets = JSON.parse(await readFile(path.join(repositoryRoot, 'scripts/release-targets.json'), 'utf8'));
+const publicAssets = ['SHA256SUMS', 'termkey-macos-aarch64.dmg', ...targets.map((target) => target.archive)].sort();
+
+test('native CI builds every requested target and exchanges production vaults in every direction', () => {
+  const native = parseWorkflow(path.join(repositoryRoot, '.github/workflows/native-validation.yml'));
+  const ci = parseWorkflow(path.join(repositoryRoot, '.github/workflows/ci.yml'));
+  assert.deepEqual(targets.map((target) => target.target).sort(), [
+    'aarch64-apple-darwin', 'x86_64-apple-darwin',
+    'x86_64-unknown-linux-musl', 'aarch64-unknown-linux-musl', 'x86_64-pc-windows-msvc',
+  ].sort());
+  assert.equal(ci.jobs.platforms.uses, './.github/workflows/native-validation.yml');
+  assert.equal(workflow.jobs.platforms.uses, ci.jobs.platforms.uses);
+  assert.equal(native.permissions.contents, 'read');
+  assert.match(native.env.MUSL_IMAGE, /^rust:1\.93\.0-alpine[^@]+@sha256:[a-f0-9]{64}$/);
+  assert.deepEqual(native.jobs.portability.needs, ['plan', 'native']);
+  for (const name of ['native', 'portability']) {
+    const job = native.jobs[name];
+    assert.equal(job['runs-on'], '${{ matrix.runner }}');
+    assert.equal(job.strategy['fail-fast'], false);
+    assert.match(job.strategy.matrix, /fromJSON\(needs\.plan\.outputs\.matrix\)/);
+    assert.equal(job.env.RUSTFLAGS, "${{ matrix.os == 'windows' && '-C target-feature=+crt-static' || '' }}");
+    assert.deepEqual(job.steps.flatMap(secretNames), []);
+  }
+  const nativeCommands = native.jobs.native.steps.map((step) => step.run ?? '').join('\n');
+  for (const command of ['cargo check --locked', 'cargo test --locked', 'cargo clippy --locked', 'cargo build --locked --release']) {
+    assert.ok(nativeCommands.includes(command), `missing native command ${command}`);
+  }
+  assert.match(nativeCommands, /--target "\$TARGET" --workspace --all-targets --no-default-features/);
+  assert.match(nativeCommands, /TERMKEY_PORTABILITY_OUT/);
+  const verifier = native.jobs.portability;
+  assert.match(verifier.steps.find((step) => step.uses?.startsWith('actions/download-artifact')).with.pattern, /termkey-fixtures-\*/);
+  for (const step of verifier.steps.filter((step) => step.name?.startsWith('Verify cross-platform'))) {
+    assert.match(step.run, /--target "\$TARGET" --test vault_portability/);
+    assert.ok(JSON.stringify(step).includes('TERMKEY_PORTABILITY_INPUT'));
+  }
+  assert.ok(workflow.jobs.build.needs.includes('platforms'));
+  assert.ok(workflow.jobs.portable.needs.includes('platforms'));
+  assert.deepEqual(workflow.jobs.assemble.needs, ['validate', 'platforms', 'build', 'portable']);
+  assert.ok(workflow.jobs.release.needs.includes('assemble'));
+  assert.ok(workflow.jobs.release.needs.includes('platforms'));
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+});
+
+test('release publication uses finalized checksums and a prepared, narrowly scoped Homebrew update', () => {
+  const prepare = workflow.jobs.assemble.steps.find((step) => step.name === 'Generate complete checksums and formula');
+  assert.match(prepare.run, /release-checksums\.mjs artifacts artifacts\/SHA256SUMS/);
+  assert.match(prepare.run, /sha256sum --check SHA256SUMS/);
+  assert.match(prepare.run, /render-homebrew-formula\.mjs "\$RELEASE_VERSION" artifacts\/SHA256SUMS/);
+  const releaseSteps = workflow.jobs.release.steps;
+  assert.ok(releaseSteps.findIndex((step) => step.name === 'Verify finalized checksums') < releaseSteps.findIndex((step) => step.name === 'Create draft Release'));
+  const tap = workflow.jobs['update-tap'].steps.find((step) => step.name === 'Update only the prepared formula');
+  assert.match(tap.run, /git add -- Formula\/termkey\.rb/);
+  assert.match(tap.run, /if git diff --cached --quiet/);
+  assert.doesNotMatch(tap.run, /x-access-token|find tap\/Formula|git add -A/);
+  assert.equal(tap.env.GH_TOKEN, '${{ secrets.TAP_GITHUB_TOKEN }}');
+});
 
 const fixtures = {
   production: {
@@ -90,6 +147,7 @@ function evaluateExpression(value, fixture, env = {}) {
     'env',
     'startsWith',
     'always',
+    'matrix',
     `"use strict"; return (${body});`,
   );
   return evaluate(
@@ -98,6 +156,7 @@ function evaluateExpression(value, fixture, env = {}) {
     env,
     (valueToCheck, prefix) => String(valueToCheck).startsWith(prefix),
     () => true,
+    fixture.matrix ?? targets[0],
   );
 }
 
@@ -189,7 +248,7 @@ test('trusted builds use the protected validation environment and unsigned dispa
 
   for (const [jobName, job] of Object.entries(workflow.jobs)) {
     const jobRunsUnsigned = evaluateCondition(job.if, fixtures.unsigned);
-    for (const step of job.steps) {
+    for (const step of job.steps ?? []) {
       const secrets = secretNames(step);
       if (jobRunsUnsigned && evaluateCondition(step.if, fixtures.unsigned)) {
         assert.deepEqual(
@@ -202,7 +261,7 @@ test('trusted builds use the protected validation environment and unsigned dispa
   }
 
   assert.deepEqual(
-    workflow.jobs['validate-tap'].steps.flatMap((step) => secretNames(step)),
+    workflow.jobs.assemble.steps.flatMap((step) => secretNames(step)),
     [],
   );
 });
@@ -211,17 +270,16 @@ test('job, artifact, and summary labels identify all three release modes', async
   const build = workflow.jobs.build;
   const upload = findStep('build', 'Upload release artifacts');
   const summary = findStep('build', 'Summarize release mode');
-  const expectedPaths = [
-    'termkey-macos-aarch64.dmg',
-    'termkey-macos-aarch64.zip',
-  ];
-  assert.deepEqual(lines(upload.with.path), expectedPaths);
+  for (const matrix of targets.filter((target) => target.os === 'macos')) {
+    const paths = lines(renderTemplate(upload.with.path, { ...fixtures.unsigned, matrix }));
+    assert.deepEqual(paths.sort(), [matrix.archive, ...(matrix.arch === 'arm64' ? ['termkey-macos-aarch64.dmg'] : [])].sort());
+  }
 
   for (const fixture of Object.values(fixtures)) {
     assert.match(renderTemplate(build.name, fixture), new RegExp(`${fixture.mode}$`));
     assert.equal(
       renderTemplate(upload.with.name, fixture),
-      `termkey-macos-aarch64-${fixture.mode}`,
+      `termkey-release-aarch64-apple-darwin-${fixture.mode}`,
     );
 
     const root = await mkdtemp(path.join(tmpdir(), 'termkey-release-summary-'));
@@ -236,8 +294,7 @@ test('job, artifact, and summary labels identify all three release modes', async
 
   assert.match(workflow.jobs.release.name, /tag-production/);
   assert.match(workflow.jobs['update-tap'].name, /tag-production/);
-  assert.match(renderTemplate(workflow.jobs['validate-tap'].name, fixtures.unsigned), /unsigned-dry-run/);
-  assert.match(renderTemplate(workflow.jobs['validate-tap'].name, fixtures.trusted), /trusted-validation/);
+  assert.ok(workflow.jobs.assemble, 'manual validation must assemble and validate the complete public payload');
 });
 
 test('release validation and packages contain only terminal features', async () => {
@@ -249,7 +306,7 @@ test('release validation and packages contain only terminal features', async () 
 
   assert.equal(validate.run, 'npm run validate');
   assert.doesNotMatch(JSON.stringify(packageJson), /extension|native-host/);
-  assert.match(createZip.run, /release_dir\/termkey" "\$staging_dir\/termkey"/);
+  assert.match(createZip.run, /package-release\.py package --target/);
   assert.doesNotMatch(buildCommands, /native-host|browser-extension|TERMKEY_EXTENSION_DIR|apps\/extension/);
   assert.doesNotMatch(packageScript, /native.host|browser-extension|TERMKEY_EXTENSION_DIR|apps\/extension/);
 });
@@ -273,9 +330,9 @@ test('release action creates a draft with the exact public asset manifest', () =
   assert.equal(step.with.generate_release_notes, true);
   assert.equal(step.with.fail_on_unmatched_files, true);
   assert.deepEqual(lines(step.with.files).sort(), [
+    'artifacts/*.dmg',
+    'artifacts/*.zip',
     'artifacts/SHA256SUMS',
-    'artifacts/termkey-macos-aarch64/termkey-macos-aarch64.dmg',
-    'artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip',
   ]);
 });
 
@@ -343,14 +400,10 @@ const exactRelease = {
   id: 42,
   tag_name: 'v1.0.0',
   draft: true,
-  assets: [
-    { name: 'termkey-macos-aarch64.zip' },
-    { name: 'SHA256SUMS' },
-    { name: 'termkey-macos-aarch64.dmg' },
-  ],
+  assets: publicAssets.map((name) => ({ name })),
 };
 
-test('draft verification publishes only an exact three-asset draft', async () => {
+test('draft verification publishes only a complete seven-asset draft', async () => {
   const step = findStep('release', 'Verify and publish draft Release');
   const exact = await createGhFixture({ release: exactRelease });
   const published = runBlock(step.run, exact.environment);
@@ -373,6 +426,23 @@ test('draft verification publishes only an exact three-asset draft', async () =>
   const rejectedPublished = runBlock(step.run, alreadyPublished.environment);
   assert.notEqual(rejectedPublished.status, 0);
   assert.doesNotMatch(await readFile(alreadyPublished.log, 'utf8'), /--method\tPATCH/);
+
+  for (const missing of publicAssets) {
+    const fixture = await createGhFixture({ release: {
+      ...exactRelease, assets: exactRelease.assets.filter(({ name }) => name !== missing),
+    } });
+    assert.notEqual(runBlock(step.run, fixture.environment).status, 0, `missing ${missing} published`);
+    assert.doesNotMatch(await readFile(fixture.log, 'utf8'), /--method\tPATCH/);
+  }
+  for (const release of [
+    { ...exactRelease, tag_name: 'v0.0.0' },
+    { ...exactRelease, id: 43 },
+    { ...exactRelease, assets: [...exactRelease.assets, { name: 'unexpected.zip' }] },
+  ]) {
+    const fixture = await createGhFixture({ release });
+    assert.notEqual(runBlock(step.run, fixture.environment).status, 0);
+    assert.doesNotMatch(await readFile(fixture.log, 'utf8'), /--method\tPATCH/);
+  }
 });
 
 async function createSecurityFixture(originalKeychains) {

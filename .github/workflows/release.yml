@@ -1,30 +1,25 @@
 name: Release
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TERMKEY_TRUSTED_BUILD: ${{ ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.trusted_build)) && 'true' || 'false' }}
   TERMKEY_PUBLISH_RELEASE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'true' || 'false' }}
   TERMKEY_RELEASE_MODE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'tag-production' || (github.event_name == 'workflow_dispatch' && inputs.trusted_build) && 'trusted-validation' || 'unsigned-dry-run' }}
-  target: aarch64-apple-darwin
-  macos_arch: arm64
-  macos_deployment_target: '11.0'
-  asset_name: termkey-macos-aarch64
-
 on:
   push:
     tags:
-      - 'v*'
+      - v*
   workflow_dispatch:
     inputs:
       trusted_build:
-        description: 'Sign, notarize, and verify without publishing'
+        description: Sign, notarize, and verify without publishing
         required: true
         default: false
         type: boolean
-
 permissions:
   contents: read
-
+concurrency:
+  group: termkey-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   validate:
     name: Validate release source
@@ -32,21 +27,18 @@ jobs:
     outputs:
       release_version: ${{ steps.release-version.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
-          toolchain: stable
+          toolchain: 1.93.0
           components: rustfmt, clippy
-
       - name: Resolve validated release version
         id: release-version
         shell: bash
@@ -58,52 +50,70 @@ jobs:
             echo "Could not resolve the project version" >&2
             exit 1
           fi
-
+          
           node scripts/validate-release-version.mjs "${TAG_VERSION:-v$project_version}"
           echo "version=$project_version" >> "$GITHUB_OUTPUT"
-
       - name: Install dependencies
         run: npm ci
-
       - name: Validate
         run: npm run validate
-
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit --version 0.22.2
-
       - name: Audit Rust dependencies
         run: |
           cargo metadata --locked --format-version 1 --no-deps > /dev/null
           cargo audit --file Cargo.lock
-
-  build:
-    name: Build Apple Silicon artifacts — ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'tag-production' || (github.event_name == 'workflow_dispatch' && inputs.trusted_build) && 'trusted-validation' || 'unsigned-dry-run' }}
+  platforms:
     needs: validate
-    runs-on: macos-15
+    uses: ./.github/workflows/native-validation.yml
+    with:
+      artifact_suffix: release
+  plan:
+    needs: validate
+    runs-on: ubuntu-24.04
+    outputs:
+      macos: ${{ steps.targets.outputs.macos }}
+      portable: ${{ steps.targets.outputs.portable }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - id: targets
+        shell: bash
+        run: "node -e 'const fs=require(\"node:fs\"); const all=JSON.parse(fs.readFileSync(\"scripts/release-targets.json\",\"utf8\")); for(const [name,include] of Object.entries({macos:all.filter(t=>t.os===\"macos\"),portable:all.filter(t=>t.os!==\"macos\")})){fs.appendFileSync(process.env.GITHUB_OUTPUT, name+\"=\"+JSON.stringify({include})+\"\\n\");}' "
+  build:
+    name: Sign and package ${{ matrix.target }} — ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'tag-production' || (github.event_name == 'workflow_dispatch' && inputs.trusted_build) && 'trusted-validation' || 'unsigned-dry-run' }}
+    needs:
+      - validate
+      - platforms
+      - plan
+    runs-on: ${{ matrix.runner }}
     environment:
       name: ${{ ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.trusted_build)) && 'apple-release-validation' || 'unsigned-dry-run' }}
     env:
       RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+      TARGET: ${{ matrix.target }}
+      ARCHIVE_NAME: ${{ matrix.archive }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      MACOS_ARCH: ${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-
       - name: Verify exact release source
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+      - name: Download tested native binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          toolchain: stable
-          targets: aarch64-apple-darwin
-
-      - name: Build release binaries
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
-        run: cargo build --release --target aarch64-apple-darwin --locked
-
+          name: termkey-binary-${{ matrix.target }}-release
+          path: release-input
+      - name: Restore executable permission
+        shell: bash
+        run: chmod 755 release-input/termkey
       - name: Summarize release mode
         shell: bash
         run: |
@@ -127,12 +137,10 @@ jobs:
             echo
             echo "$mode_description"
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Configure unsigned dry run
         if: env.TERMKEY_TRUSTED_BUILD == 'false'
         shell: bash
         run: echo "TERMKEY_RELEASE_SIGNING=disabled" >> "$GITHUB_ENV"
-
       - name: Check trusted build credentials
         if: env.TERMKEY_TRUSTED_BUILD == 'true'
         shell: bash
@@ -162,7 +170,6 @@ jobs:
             fi
           done
           exit "$missing"
-
       - name: Configure ephemeral Apple credentials
         if: env.TERMKEY_TRUSTED_BUILD == 'true'
         shell: bash
@@ -182,15 +189,17 @@ jobs:
           keychain_password=$(openssl rand -hex 24)
           echo "::add-mask::$keychain_password"
           umask 077
-
-          echo "APPLE_CERTIFICATE_PATH=$certificate_path" >> "$GITHUB_ENV"
-          echo "APPLE_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
-          echo "APPLE_NOTARY_KEY_PATH=$notary_key_path" >> "$GITHUB_ENV"
-          echo "APPLE_ORIGINAL_KEYCHAINS_PATH=$original_keychains_path" >> "$GITHUB_ENV"
-
+          
+          {
+            echo "APPLE_CERTIFICATE_PATH=$certificate_path"
+            echo "APPLE_KEYCHAIN_PATH=$keychain_path"
+            echo "APPLE_NOTARY_KEY_PATH=$notary_key_path"
+            echo "APPLE_ORIGINAL_KEYCHAINS_PATH=$original_keychains_path"
+          } >> "$GITHUB_ENV"
+          
           printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
           printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_key_path"
-
+          
           security create-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
@@ -204,7 +213,7 @@ jobs:
             -s \
             -k "$keychain_password" \
             "$keychain_path"
-
+          
           keychain_search_list=$(security list-keychains -d user)
           : > "$original_keychains_path"
           existing_keychains=()
@@ -221,7 +230,7 @@ jobs:
             fi
           done <<< "$keychain_search_list"
           security list-keychains -d user -s "${existing_keychains[@]}" "$keychain_path"
-
+          
           case "$APPLE_APPLICATION_SIGNING_IDENTITY" in
             "Developer ID Application: "*) ;;
             *) echo "APPLE_APPLICATION_SIGNING_IDENTITY must be a Developer ID Application identity" >&2; exit 1 ;;
@@ -242,7 +251,7 @@ jobs:
             echo "APPLE_INSTALLER_SIGNING_IDENTITY does not match APPLE_TEAM_ID" >&2
             exit 1
           fi
-
+          
           application_identities=$(security find-identity -v -p codesigning "$keychain_path" | sed -nE 's/^[[:space:]]*[0-9]+\) [[:xdigit:]]+ "(.*)"$/\1/p')
           installer_identities=$(security find-identity -v "$keychain_path" | sed -nE 's/^[[:space:]]*[0-9]+\) [[:xdigit:]]+ "(.*)"$/\1/p')
           if [[ $(printf '%s\n' "$application_identities" | grep -Fxc -- "$APPLE_APPLICATION_SIGNING_IDENTITY") -ne 1 ]]; then
@@ -253,55 +262,49 @@ jobs:
             echo "Configured keychain does not contain the exact installer signing identity" >&2
             exit 1
           fi
-
+          
           echo "TERMKEY_RELEASE_SIGNING=required" >> "$GITHUB_ENV"
-
       - name: Sign release binaries
         if: env.TERMKEY_TRUSTED_BUILD == 'true'
         shell: bash
         env:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
         run: |
-          release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          for executable in "$release_dir/termkey"; do
-            codesign --force --options runtime --timestamp \
-              --sign "$APPLE_APPLICATION_SIGNING_IDENTITY" \
-              "$executable"
-            codesign --verify --strict --verbose=2 "$executable"
-          done
-
+          release_dir="$GITHUB_WORKSPACE/release-input"
+          codesign --force --options runtime --timestamp \
+            --sign "$APPLE_APPLICATION_SIGNING_IDENTITY" \
+            "$release_dir/termkey"
+          codesign --verify --strict --verbose=2 "$release_dir/termkey"
       - name: Create signed PKG
-        if: env.TERMKEY_TRUSTED_BUILD == 'true'
+        if: (env.TERMKEY_TRUSTED_BUILD == 'true') && matrix.arch == 'arm64'
         shell: bash
         env:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGNING_IDENTITY }}
           TERMKEY_MACOS_ARCH: arm64
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
+          release_dir="$GITHUB_WORKSPACE/release-input"
           apps/cli/packaging/macos/create-pkg.sh \
             "$release_dir/termkey" \
             "$RELEASE_VERSION" \
             "termkey-macos-aarch64-installer" \
             "$GITHUB_WORKSPACE"
-
       - name: Create unsigned PKG
-        if: env.TERMKEY_TRUSTED_BUILD == 'false'
+        if: (env.TERMKEY_TRUSTED_BUILD == 'false') && matrix.arch == 'arm64'
         shell: bash
         env:
           TERMKEY_MACOS_ARCH: arm64
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
+          release_dir="$GITHUB_WORKSPACE/release-input"
           apps/cli/packaging/macos/create-pkg.sh \
             "$release_dir/termkey" \
             "$RELEASE_VERSION" \
             "termkey-macos-aarch64-installer" \
             "$GITHUB_WORKSPACE"
-
       - name: Notarize and staple PKG
-        if: env.TERMKEY_TRUSTED_BUILD == 'true'
+        if: (env.TERMKEY_TRUSTED_BUILD == 'true') && matrix.arch == 'arm64'
         shell: bash
         env:
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
@@ -311,7 +314,6 @@ jobs:
           apps/cli/packaging/macos/notarize-artifact.sh \
             "$GITHUB_WORKSPACE/termkey-macos-aarch64-installer.pkg" \
             pkg
-
       - name: Create DMG
         shell: bash
         run: |
@@ -320,16 +322,16 @@ jobs:
             "termkey-macos-aarch64" \
             "TermKey aarch64-apple-darwin" \
             "$GITHUB_WORKSPACE"
-
+          
           if [[ ! -f "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg" \
             && -f "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg.dmg" ]]; then
             mv "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg.dmg" \
               "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg"
           fi
           test -f "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg"
-
+        if: matrix.arch == 'arm64'
       - name: Sign DMG
-        if: env.TERMKEY_TRUSTED_BUILD == 'true'
+        if: (env.TERMKEY_TRUSTED_BUILD == 'true') && matrix.arch == 'arm64'
         shell: bash
         env:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
@@ -339,9 +341,8 @@ jobs:
             "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg"
           codesign --verify --strict --verbose=2 \
             "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg"
-
       - name: Notarize and staple DMG
-        if: env.TERMKEY_TRUSTED_BUILD == 'true'
+        if: (env.TERMKEY_TRUSTED_BUILD == 'true') && matrix.arch == 'arm64'
         shell: bash
         env:
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
@@ -351,18 +352,10 @@ jobs:
           apps/cli/packaging/macos/notarize-artifact.sh \
             "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg" \
             dmg
-
       - name: Create ZIP from release payload
         shell: bash
         run: |
-          release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          staging_dir="$RUNNER_TEMP/termkey-macos-aarch64-zip"
-          zip_path="$GITHUB_WORKSPACE/termkey-macos-aarch64.zip"
-          mkdir -p "$staging_dir"
-          ditto --norsrc "$release_dir/termkey" "$staging_dir/termkey"
-
-          ditto -c -k --norsrc "$staging_dir" "$zip_path"
-
+          python3 scripts/package-release.py package --target "$TARGET" --binary "$GITHUB_WORKSPACE/release-input/termkey" --output-dir "$GITHUB_WORKSPACE" --version "$RELEASE_VERSION"
       - name: Notarize ZIP
         if: env.TERMKEY_TRUSTED_BUILD == 'true'
         shell: bash
@@ -371,12 +364,16 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
-          apps/cli/packaging/macos/notarize-artifact.sh \
-            "$GITHUB_WORKSPACE/termkey-macos-aarch64.zip" \
-            zip
-
-      - name: Verify trusted release artifacts
+          apps/cli/packaging/macos/notarize-artifact.sh "$GITHUB_WORKSPACE/$ARCHIVE_NAME" zip
+      - name: Verify signed native ZIP
         if: env.TERMKEY_TRUSTED_BUILD == 'true'
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          python3 scripts/package-release.py verify --target "$TARGET" --archive "$GITHUB_WORKSPACE/$ARCHIVE_NAME" --run --require-signature --team-id "$APPLE_TEAM_ID"
+      - name: Verify trusted release artifacts
+        if: (env.TERMKEY_TRUSTED_BUILD == 'true') && matrix.arch == 'arm64'
         shell: bash
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -386,41 +383,23 @@ jobs:
             "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg" \
             "$GITHUB_WORKSPACE/termkey-macos-aarch64.zip" \
             "$APPLE_TEAM_ID"
-
       - name: Verify unsigned dry-run artifacts
         if: env.TERMKEY_TRUSTED_BUILD == 'false'
         shell: bash
         run: |
-          release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          for executable in "$release_dir/termkey"; do
-            test "$(lipo -archs "$executable")" = "arm64"
-            minos=$(otool -l "$executable" | awk '
-              $1 == "cmd" && $2 == "LC_BUILD_VERSION" { command = "build"; next }
-              $1 == "cmd" && $2 == "LC_VERSION_MIN_MACOSX" { command = "legacy"; next }
-              command == "build" && $1 == "minos" { print $2; exit }
-              command == "legacy" && $1 == "version" { print $2; exit }
-            ')
-            [[ "$minos" == "11.0" || "$minos" == "11.0.0" ]]
-          done
-
-          zip_roots=$(unzip -Z1 "$GITHUB_WORKSPACE/termkey-macos-aarch64.zip" \
-            | awk -F/ 'NF && $1 != "" { print $1 }' \
-            | LC_ALL=C sort -u)
-          expected_zip_roots='termkey'
-          test "$zip_roots" = "$expected_zip_roots"
-          pkgutil --payload-files "$GITHUB_WORKSPACE/termkey-macos-aarch64-installer.pkg" \
-            | grep -Fqx './usr/local/bin/termkey'
-          hdiutil imageinfo "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg" > /dev/null
-
+          python3 scripts/package-release.py verify --target "$TARGET" --archive "$GITHUB_WORKSPACE/$ARCHIVE_NAME" --run
+          if [[ "$MACOS_ARCH" == arm64 ]]; then
+            pkgutil --payload-files "$GITHUB_WORKSPACE/termkey-macos-aarch64-installer.pkg" | grep -Fqx './usr/local/bin/termkey'
+            hdiutil imageinfo "$GITHUB_WORKSPACE/termkey-macos-aarch64.dmg" > /dev/null
+          fi
       - name: Upload notarization rejection logs
         if: always() && env.TERMKEY_TRUSTED_BUILD == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: termkey-notarization-rejection-logs-${{ env.TERMKEY_RELEASE_MODE }}
+          name: termkey-notarization-rejection-logs-${{ matrix.target }}-${{ env.TERMKEY_RELEASE_MODE }}
           path: ${{ runner.temp }}/termkey-notary-*.log
           if-no-files-found: ignore
           retention-days: 7
-
       - name: Remove Apple credentials
         if: always()
         shell: bash
@@ -446,28 +425,112 @@ jobs:
             rm -f "${notary_key_paths[@]}"
           fi
           exit "$cleanup_status"
-
       - name: Upload release artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: termkey-macos-aarch64-${{ env.TERMKEY_RELEASE_MODE }}
+          name: termkey-release-${{ matrix.target }}-${{ env.TERMKEY_RELEASE_MODE }}
           path: |
-            termkey-macos-aarch64.dmg
-            termkey-macos-aarch64.zip
+            ${{ matrix.archive }}
+            ${{ matrix.arch == 'arm64' && 'termkey-macos-aarch64.dmg' || '' }}
           if-no-files-found: error
-
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.macos) }}
+  portable:
+    name: Package ${{ matrix.target }}
+    needs:
+      - validate
+      - platforms
+      - plan
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.portable) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+      - name: Download tested native binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: termkey-binary-${{ matrix.target }}-release
+          path: release-input
+      - name: Package and verify native ZIP
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          EXECUTABLE: ${{ matrix.executable }}
+          ARCHIVE_NAME: ${{ matrix.archive }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+          PYTHON: ${{ matrix.os == 'windows' && 'python' || 'python3' }}
+        run: |
+          "$PYTHON" scripts/package-release.py package --target "$TARGET" --binary "release-input/$EXECUTABLE" --output-dir artifacts --version "$RELEASE_VERSION"
+          "$PYTHON" scripts/package-release.py verify --target "$TARGET" --archive "artifacts/$ARCHIVE_NAME" --run
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: termkey-release-${{ matrix.target }}-${{ env.TERMKEY_RELEASE_MODE }}
+          path: artifacts/${{ matrix.archive }}
+          if-no-files-found: error
+  assemble:
+    name: Verify complete release and prepare Homebrew
+    needs:
+      - validate
+      - platforms
+      - build
+      - portable
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Download every finalized archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: termkey-release-*-${{ env.TERMKEY_RELEASE_MODE }}
+          path: artifacts
+          merge-multiple: true
+      - name: Generate complete checksums and formula
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          mapfile -t expected < <(node -e 'const fs=require("node:fs"); const targets=JSON.parse(fs.readFileSync("scripts/release-targets.json","utf8")); console.log([...targets.map(t=>t.archive),"termkey-macos-aarch64.dmg"].join("\n"));')
+          node scripts/release-checksums.mjs artifacts artifacts/SHA256SUMS "${expected[@]}"
+          (cd artifacts && sha256sum --check SHA256SUMS)
+          node scripts/render-homebrew-formula.mjs "$RELEASE_VERSION" artifacts/SHA256SUMS Formula/termkey.rb
+          ruby -c Formula/termkey.rb
+      - name: Upload complete release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: termkey-ready-${{ env.TERMKEY_RELEASE_MODE }}
+          path: artifacts/
+          if-no-files-found: error
+      - name: Upload prepared Homebrew formula
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: termkey-formula-${{ env.TERMKEY_RELEASE_MODE }}
+          path: Formula/termkey.rb
+          if-no-files-found: error
   release:
     name: Publish GitHub Release (tag-production)
-    needs: build
+    needs:
+      - assemble
+      - platforms
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
       - name: Fail if release tag already exists
         shell: bash
         env:
@@ -482,33 +545,29 @@ jobs:
             echo "A release or draft already exists for tag $GITHUB_REF_NAME" >&2
             exit 1
           fi
-
       - name: Download public artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: termkey-macos-aarch64-tag-production
-          path: artifacts/termkey-macos-aarch64
-
-      - name: Generate release checksums
+          name: termkey-ready-tag-production
+          path: artifacts
+      - name: Verify finalized checksums
+        shell: bash
         run: |
-          node scripts/release-checksums.mjs artifacts artifacts/SHA256SUMS \
-            termkey-macos-aarch64.dmg \
-            termkey-macos-aarch64.zip
-
+          cd artifacts
+          sha256sum --check SHA256SUMS
       - name: Create draft Release
         id: create-draft
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
-            artifacts/termkey-macos-aarch64/termkey-macos-aarch64.dmg
-            artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip
+            artifacts/*.zip
+            artifacts/*.dmg
             artifacts/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Verify and publish draft Release
         shell: bash
         env:
@@ -526,7 +585,7 @@ jobs:
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             > "$release_json"
-
+          
           if [[ $(jq -r '.tag_name' "$release_json") != "$GITHUB_REF_NAME" ]]; then
             echo "Draft release tag did not match $GITHUB_REF_NAME" >&2
             exit 1
@@ -535,15 +594,15 @@ jobs:
             echo "Release for $GITHUB_REF_NAME was not an unpublished draft" >&2
             exit 1
           fi
-
+          
           actual_assets=$(jq -r '.assets[].name' "$release_json" | LC_ALL=C sort)
-          expected_assets=$'SHA256SUMS\ntermkey-macos-aarch64.dmg\ntermkey-macos-aarch64.zip'
+          expected_assets=$(node -e 'const fs=require("node:fs"); const targets=JSON.parse(fs.readFileSync("scripts/release-targets.json","utf8")); console.log(["SHA256SUMS","termkey-macos-aarch64.dmg",...targets.map(t=>t.archive)].sort().join("\n"));')
           if [[ "$actual_assets" != "$expected_assets" ]]; then
             echo "Draft release assets did not match the exact public manifest" >&2
             printf 'Expected:\n%s\nActual:\n%s\n' "$expected_assets" "$actual_assets" >&2
             exit 1
           fi
-
+          
           release_id=$(jq -r '.id' "$release_json")
           if [[ "$release_id" != "$RELEASE_ID" ]]; then
             echo "Queried draft release ID did not match the created release" >&2
@@ -559,89 +618,37 @@ jobs:
             echo "Release $release_id did not publish" >&2
             exit 1
           fi
-
   update-tap:
     name: Update Homebrew Tap (tag-production)
     needs: release
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 20
-
       - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: termkey-macos-aarch64-tag-production
-          path: artifacts/termkey-macos-aarch64
-
-      - name: Compute SHA256 and update formula
+          name: termkey-formula-tag-production
+          path: prepared-formula
+      - name: Update only the prepared formula
+        shell: bash
         env:
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
-          SHA_MACOS_ARM=$(shasum -a 256 artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip | awk '{print $1}')
-          VER=${VERSION#v}
-          formula_path="$RUNNER_TEMP/termkey.rb"
-
-          node scripts/render-homebrew-formula.mjs "$VER" "$SHA_MACOS_ARM" "$formula_path"
-
-          git clone https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/ryanonmars/homebrew-termkey.git tap
+          gh auth setup-git
+          git clone https://github.com/ryanonmars/homebrew-termkey.git tap
           mkdir -p tap/Formula
-
-          find tap/Formula -maxdepth 1 -type f -name '*.rb' ! -name 'termkey.rb' -exec grep -l 'github.com/ryanonmars/termkey' {} + | xargs -r rm -f
-          cp "$formula_path" tap/Formula/termkey.rb
+          cp prepared-formula/termkey.rb tap/Formula/termkey.rb
           cd tap
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A Formula
-          git commit -m "termkey ${VER}"
-          git push
-
-  validate-tap:
-    name: Validate Homebrew Tap (${{ github.event_name == 'workflow_dispatch' && inputs.trusted_build && 'trusted-validation' || 'unsigned-dry-run' }})
-    needs: build
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.sha }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 20
-
-      - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: termkey-macos-aarch64-${{ env.TERMKEY_RELEASE_MODE }}
-          path: artifacts/termkey-macos-aarch64
-
-      - name: Validate tap access and formula output
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          SHA_MACOS_ARM=$(shasum -a 256 artifacts/termkey-macos-aarch64/termkey-macos-aarch64.zip | awk '{print $1}')
-          formula_path="$RUNNER_TEMP/termkey.rb"
-
-          git ls-remote https://github.com/ryanonmars/homebrew-termkey.git HEAD
-
-          node scripts/render-homebrew-formula.mjs 0.0.0 "$SHA_MACOS_ARM" "$formula_path"
-
-          {
-            echo "## Homebrew formula preview: $TERMKEY_RELEASE_MODE"
-            echo
-            echo "- Ref: ${REF_NAME}"
-            echo "- macOS ARM SHA256: \`${SHA_MACOS_ARM}\`"
-            echo
-            echo "\`\`\`ruby"
-            cat "$formula_path"
-            echo "\`\`\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          git add -- Formula/termkey.rb
+          if git diff --cached --quiet; then
+            echo "Formula is already current."
+          else
+            git commit -m "termkey ${VERSION#v}"
+            git push
+          fi
