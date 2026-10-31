@@ -324,7 +324,7 @@ fn windows_open_handle_and_readonly_target_preserve_existing_vault() {
     let expected = fs::read(&path).unwrap();
     let handle = fs::OpenOptions::new()
         .read(true)
-        .share_mode(0)
+        .share_mode(windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ)
         .open(&path)
         .unwrap();
     session.vault.entries[0].notes = "must not persist".into();
