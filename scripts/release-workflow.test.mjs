@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,6 +86,48 @@ test('native CI builds every requested target and exchanges production vaults in
   assert.ok(workflow.jobs.release.needs.includes('assemble'));
   assert.ok(workflow.jobs.release.needs.includes('platforms'));
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
+});
+
+test('native jobs reject mismatched runner identity and cross-compiling Rust hosts', async (t) => {
+  const native = parseWorkflow(path.join(repositoryRoot, '.github/workflows/native-validation.yml'));
+  const directory = await mkdtemp(path.join(tmpdir(), 'termkey-native-host-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const rustc = path.join(directory, 'rustc');
+  await writeFile(rustc, '#!/bin/sh\nprintf "host: %s\\n" "$SYNTHETIC_RUST_HOST"\n');
+  await chmod(rustc, 0o755);
+  for (const name of ['native', 'portability']) {
+    const job = native.jobs[name];
+    const identity = job.steps.find((step) => step.name === 'Verify native runner identity');
+    assert.ok(identity, `${name} must verify its runner`);
+    const compilerChecks = job.steps.flatMap((step) => (step.run ?? '').split('\n'))
+      .filter((line) => line.trim().startsWith('test "$(rustc --verbose --version'));
+    assert.equal(compilerChecks.length, 2, 'both direct and container paths must verify compiler host');
+    for (const target of targets) {
+      const environment = Object.fromEntries(Object.entries(identity.env)
+        .map(([key, value]) => [key, evaluateExpression(value, { matrix: target, github: {}, inputs: {} })]));
+      const runner = {
+        ...process.env, ...environment,
+        RUNNER_OS: { macos: 'macOS', linux: 'Linux', windows: 'Windows' }[target.os],
+        RUNNER_ARCH: target.arch === 'arm64' ? 'ARM64' : 'X64',
+      };
+      assert.equal(spawnSync('bash', ['-e', '-c', identity.run], { env: runner }).status, 0);
+      for (const key of ['RUNNER_OS', 'RUNNER_ARCH']) {
+        assert.notEqual(spawnSync('bash', ['-e', '-c', identity.run], {
+          env: { ...runner, [key]: 'wrong-native-runner' },
+        }).status, 0, `${name}/${target.target} accepted the wrong ${key}`);
+      }
+      for (const check of compilerChecks) {
+        const hostEnvironment = {
+          ...process.env, PATH: `${directory}:${process.env.PATH}`, TARGET: target.target,
+          SYNTHETIC_RUST_HOST: target.target,
+        };
+        assert.equal(spawnSync('bash', ['-e', '-c', check], { env: hostEnvironment }).status, 0);
+        assert.notEqual(spawnSync('bash', ['-e', '-c', check], {
+          env: { ...hostEnvironment, SYNTHETIC_RUST_HOST: 'cross-compiling-host' },
+        }).status, 0, `${name}/${target.target} accepted a nonnative Rust compiler`);
+      }
+    }
+  }
 });
 
 test('release publication uses finalized checksums and a prepared, narrowly scoped Homebrew update', () => {
