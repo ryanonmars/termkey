@@ -32,9 +32,11 @@ fi
 
 cp "$package_path" "$staging_dir/Install TermKey.pkg"
 cp "$script_dir/README.txt" "$staging_dir/README.txt"
+cp "$script_dir/../../../../LICENSE" "$staging_dir/LICENSE"
+cp "$script_dir/../THIRD-PARTY-LICENSES.txt" "$staging_dir/THIRD-PARTY-LICENSES.txt"
 
 chmod 644 "$staging_dir/Install TermKey.pkg"
-chmod 644 "$staging_dir/README.txt"
+chmod 644 "$staging_dir/README.txt" "$staging_dir/LICENSE" "$staging_dir/THIRD-PARTY-LICENSES.txt"
 
 run_with_retries() {
   local attempts=$1

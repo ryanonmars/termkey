@@ -26,6 +26,7 @@ TARGETS = json.loads((ROOT / "scripts/release-targets.json").read_text(encoding=
 STAMP = (1980, 1, 1, 0, 0, 0)
 MAX_EXECUTABLE = 256 * 1024 * 1024
 MAX_SUPPORTING_FILE = 128 * 1024
+MAX_NOTICES = 32 * 1024 * 1024
 WINDOWS_SYSTEM_DLLS = {
     "advapi32.dll", "bcrypt.dll", "bcryptprimitives.dll", "cfgmgr32.dll",
     "comctl32.dll", "comdlg32.dll", "crypt32.dll", "cryptbase.dll", "cryptsp.dll",
@@ -204,11 +205,19 @@ def validate_binary(data, info):
     {"macos": validate_macho, "linux": validate_elf, "windows": validate_pe}[info["os"]](data, info)
 
 
+def validate_notices(contents):
+    expected = hashlib.sha256((ROOT / "Cargo.lock").read_bytes()).hexdigest().encode("ascii")
+    matches = re.findall(rb"^Cargo.lock SHA-256: ([0-9a-f]{64})$", contents, re.M)
+    if len(contents) > MAX_NOTICES or matches != [expected]:
+        raise ValueError("third-party notices are missing or stale for Cargo.lock; regenerate them")
+
+
 def installation_text(info, version):
     common = f"""TermKey {version} — {info['target']}
 
 Verify this ZIP against SHA256SUMS from the same GitHub Release before use.
 The archive contains a native executable; no Rust installation is needed.
+LICENSE covers TermKey; THIRD-PARTY-LICENSES.txt contains dependency notices.
 Do not put your vault inside the executable's installation directory.
 
 """
@@ -298,8 +307,11 @@ def package(info, binary, output_directory, version):
     license_text = (ROOT / "LICENSE").read_bytes()
     if not license_text.strip():
         raise ValueError("release license is missing")
+    notices = (ROOT / "apps/cli/packaging/THIRD-PARTY-LICENSES.txt").read_bytes()
+    validate_notices(notices)
     members = {
         info["executable"]: data,
+        "THIRD-PARTY-LICENSES.txt": notices,
         "LICENSE": license_text,
         "README.txt": installation_text(info, version).encode("utf-8"),
     }
@@ -350,13 +362,13 @@ def verify_native(info, executable, require_signature=False, team_id=None):
 
 
 def verify(info, archive_path, run=False, require_signature=False, team_id=None):
-    expected = {info["executable"], "LICENSE", "README.txt"}
+    expected = {info["executable"], "LICENSE", "README.txt", "THIRD-PARTY-LICENSES.txt"}
     with zipfile.ZipFile(archive_path) as archive:
         members = archive.infolist()
         if len(members) != len(expected) or {entry.filename for entry in members} != expected:
-            raise ValueError("archive must contain only the native executable, LICENSE, and README.txt at root")
+            raise ValueError("archive must contain only the native executable, LICENSE, THIRD-PARTY-LICENSES.txt, and README.txt at root")
         for entry in members:
-            maximum = MAX_EXECUTABLE if entry.filename == info["executable"] else MAX_SUPPORTING_FILE
+            maximum = MAX_EXECUTABLE if entry.filename == info["executable"] else MAX_NOTICES if entry.filename == "THIRD-PARTY-LICENSES.txt" else MAX_SUPPORTING_FILE
             mode = entry.external_attr >> 16
             expected_mode = 0o755 if entry.filename == info["executable"] else 0o644
             if entry.flag_bits & 1 or entry.file_size <= 0 or entry.file_size > maximum:
@@ -367,6 +379,7 @@ def verify(info, archive_path, run=False, require_signature=False, team_id=None)
         validate_binary(data, info)
         if b"MIT License" not in archive.read("LICENSE"):
             raise ValueError("archive license is missing or incorrect")
+        validate_notices(archive.read("THIRD-PARTY-LICENSES.txt"))
         instructions = archive.read("README.txt").decode("utf-8")
         if info["target"] not in instructions or "termkey reset" not in instructions:
             raise ValueError("archive installation instructions do not match target")

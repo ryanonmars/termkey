@@ -105,6 +105,14 @@ set -euo pipefail
 printf "hdiutil %s\\n" "$*" >> "$TERMKEY_TEST_LOG"
 case "$1" in
   create)
+    for (( argument = 1; argument <= $#; argument++ )); do
+      if [[ "${!argument}" == "-srcfolder" ]]; then
+        argument=$((argument + 1))
+        payload=${!argument}
+        [[ -s "$payload/LICENSE" && -s "$payload/THIRD-PARTY-LICENSES.txt" ]] || exit 65
+        [[ -f "$payload/README.txt" && -f "$payload/Install TermKey.pkg" ]] || exit 65
+      fi
+    done
     if [[ "${TERMKEY_TEST_HDIUTIL_FAIL:-}" == "create" ]]; then
       exit 71
     fi
@@ -153,6 +161,7 @@ if [[ "$1" == "-x" && "$2" == "-k" && "$3" == "$TERMKEY_TEST_ZIP_PATH" && $# -eq
   : > "$destination/termkey"
   : > "$destination/LICENSE"
   : > "$destination/README.txt"
+  : > "$destination/THIRD-PARTY-LICENSES.txt"
 else
   exit 64
 fi'
@@ -254,7 +263,7 @@ export TERMKEY_TEST_PKG_PATH="$artifacts_dir/TermKey.pkg"
 export TERMKEY_TEST_DMG_PATH="$artifacts_dir/TermKey.dmg"
 export TERMKEY_TEST_ZIP_PATH="$artifacts_dir/TermKey.zip"
 export APPLE_NOTARY_KEY_BASE64=encoded-notary-key
-export TERMKEY_TEST_ZIP_ENTRIES=$'LICENSE\nREADME.txt\ntermkey'
+export TERMKEY_TEST_ZIP_ENTRIES=$'LICENSE\nREADME.txt\nTHIRD-PARTY-LICENSES.txt\ntermkey'
 
 run_case accepted pkg
 assert_log_contains 'notarytool submit'

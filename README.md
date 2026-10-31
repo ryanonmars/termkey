@@ -38,6 +38,9 @@ a successful cross-compilation alone does not establish runtime support.
 | Linux ARM64 | `aarch64-unknown-linux-musl` | `termkey-linux-arm64.zip` | Native ARM64 MUSL tests; static linkage; clean Linux and clipboard checks |
 | Windows x86_64 | `x86_64-pc-windows-msvc` | `termkey-windows-x64.zip` | Native Windows security tests; Windows Terminal/PowerShell; standard-user checks |
 
+Each ZIP includes the native executable, `LICENSE`, dependency notices in
+`THIRD-PARTY-LICENSES.txt`, and platform-specific `README.txt` instructions.
+
 The Apple Silicon ZIP name is deliberately unchanged for existing download and
 Homebrew users. Other names use `x64`/`arm64`; release tags version the download
 URLs. The existing signed/notarized Apple Silicon DMG remains available. New ZIPs
@@ -204,8 +207,9 @@ Zeroization and process hardening reduce exposure but do not guarantee that no
 sensitive data reaches OS paging, crash dumps, terminal history, screenshots, or
 other processes. Memory locking and dump prevention have OS-specific limits.
 
-Secret clipboard copies clear only while TermKey still owns the unchanged value.
-Clearing is best effort and cannot erase Windows clipboard history/cloud clipboard,
+Before clearing a secret, TermKey checks its copy token and the current clipboard
+text. External applications can race that check or copy identical text, so clearing
+is best effort. It cannot erase Windows clipboard history/cloud clipboard,
 third-party clipboard managers, or an external application's retained copy.
 Linux requires an available X11 or supported Wayland clipboard protocol; some
 compositors and headless/SSH sessions provide none. An unavailable clipboard

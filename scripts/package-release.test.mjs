@@ -54,7 +54,7 @@ for info in module.TARGETS:
  assert first.read_bytes()==second.read_bytes()
  module.verify(info,first)
  with zipfile.ZipFile(first) as archive:
-  assert sorted(archive.namelist())==sorted(['LICENSE','README.txt',info['executable']])
+  assert sorted(archive.namelist())==sorted(['LICENSE','README.txt','THIRD-PARTY-LICENSES.txt',info['executable']])
   assert stat.S_IMODE(archive.getinfo(info['executable']).external_attr>>16)==0o755
   assert all(item.date_time==module.STAMP for item in archive.infolist())
   assert info['target'] in archive.read('README.txt').decode()
@@ -88,12 +88,13 @@ info=module.target_info('x86_64-unknown-linux-musl')
 with tempfile.TemporaryDirectory() as temporary:
  root=pathlib.Path(temporary); source=root/'binary'; source.write_bytes(binary(info)); original=module.package(info,source,root,'1.2.3')
  with zipfile.ZipFile(original) as archive: members={name:archive.read(name) for name in archive.namelist()}
- for bad in ['traversal','extra','symlink','mode','duplicate','missing','target']:
+ for bad in ['traversal','extra','symlink','mode','duplicate','missing','target','notices']:
   altered=root/(bad+'.zip')
   with zipfile.ZipFile(altered,'w') as archive:
    for name,data in members.items():
     if bad=='missing' and name=='LICENSE': continue
     if bad=='target' and name=='README.txt': data=b'wrong target'
+    if bad=='notices' and name=='THIRD-PARTY-LICENSES.txt': data=b'Cargo.lock SHA-256: '+b'0'*64
     entry=zipfile.ZipInfo(name,module.STAMP); entry.create_system=3
     mode=0o755 if name=='termkey' else 0o644
     entry.external_attr=((stat.S_IFLNK if bad=='symlink' and name=='termkey' else stat.S_IFREG)|mode)<<16

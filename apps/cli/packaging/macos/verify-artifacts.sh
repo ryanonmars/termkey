@@ -142,7 +142,7 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
   zip_roots+="${path_components[0]}"$'\n'
 done <<< "$zip_entries"
 zip_roots=$(printf '%s' "$zip_roots" | LC_ALL=C sort -u)
-expected_zip_roots=$'LICENSE\nREADME.txt\ntermkey'
+expected_zip_roots=$'LICENSE\nREADME.txt\nTHIRD-PARTY-LICENSES.txt\ntermkey'
 if [[ "$zip_roots" != "$expected_zip_roots" ]]; then
   echo "unexpected ZIP root entries:" >&2
   printf '%s\n' "$zip_roots" >&2
@@ -154,7 +154,7 @@ trap 'rm -rf "$zip_extract_dir"' EXIT
 ditto -x -k "$zip_path" "$zip_extract_dir"
 
 termkey_binary="$zip_extract_dir/termkey"
-if [[ ! -f "$termkey_binary" || ! -f "$zip_extract_dir/LICENSE" || ! -f "$zip_extract_dir/README.txt" ]]; then
+if [[ ! -f "$termkey_binary" || ! -f "$zip_extract_dir/LICENSE" || ! -f "$zip_extract_dir/README.txt" || ! -f "$zip_extract_dir/THIRD-PARTY-LICENSES.txt" ]]; then
   echo "ZIP extraction did not contain the expected release payload" >&2
   exit 1
 fi

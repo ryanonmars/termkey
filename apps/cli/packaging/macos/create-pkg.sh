@@ -91,6 +91,9 @@ create_app_bundle() {
   local app_executable="$app_macos_dir/$executable_name"
 
   mkdir -p "$app_macos_dir" "$app_resources_dir"
+  cp "$script_dir/../../../../LICENSE" "$app_resources_dir/LICENSE"
+  cp "$script_dir/../THIRD-PARTY-LICENSES.txt" "$app_resources_dir/THIRD-PARTY-LICENSES.txt"
+  chmod 644 "$app_resources_dir/LICENSE" "$app_resources_dir/THIRD-PARTY-LICENSES.txt"
 
   CLANG_MODULE_CACHE_PATH="$swift_cache_dir" \
   SWIFT_MODULE_CACHE_PATH="$swift_cache_dir" \
