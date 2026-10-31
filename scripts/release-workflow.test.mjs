@@ -69,6 +69,11 @@ test('native CI builds every requested target and exchanges production vaults in
   }
   assert.match(nativeCommands, /--target "\$TARGET" --workspace --all-targets --no-default-features/);
   assert.match(nativeCommands, /TERMKEY_PORTABILITY_OUT/);
+  assert.match(nativeCommands, /--test clipboard_linux --no-run/);
+  assert.match(nativeCommands, /TERMKEY_TEST_CLIPBOARD_SANDBOX=1 scripts\/test-linux-clipboard\.sh/);
+  assert.match(nativeCommands, /su -s \/bin\/sh clipboardtest/);
+  assert.match(nativeCommands, /setcap -r \/usr\/bin\/sway/);
+  assert.doesNotMatch(nativeCommands, /--privileged|--cap-add/);
   const verifier = native.jobs.portability;
   assert.match(verifier.steps.find((step) => step.uses?.startsWith('actions/download-artifact')).with.pattern, /termkey-fixtures-\*/);
   for (const step of verifier.steps.filter((step) => step.name?.startsWith('Verify cross-platform'))) {

@@ -84,6 +84,22 @@ jobs:
               cargo clippy --locked --target "$TARGET" --workspace --all-targets --all-features -- -D warnings
               cargo build --locked --release --target "$TARGET" --bin termkey
               cargo test --locked --target "$TARGET" --test vault_portability -- --test-threads=1
+              cargo test --locked --release --target "$TARGET" --test clipboard_linux --no-run
+              apk add --no-cache xvfb sway mesa-dri-gallium dbus font-dejavu libcap-utils
+              adduser -D -u 1000 clipboardtest
+              # Alpine gives Sway CAP_SYS_NICE, absent from the Docker bounding
+              # set. Remove that capability instead of granting container privileges.
+              setcap -r /usr/bin/sway
+              count=0
+              test_binary=""
+              for candidate in target/"$TARGET"/release/deps/clipboard_linux-*; do
+                if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+                  test_binary="/workspace/$candidate"
+                  count=$((count + 1))
+                fi
+              done
+              test "$count" = 1
+              su -s /bin/sh clipboardtest -c "TERMKEY_TEST_CLIPBOARD_SANDBOX=1 scripts/test-linux-clipboard.sh $test_binary"
             '
       - name: Make synthetic fixtures readable by artifact uploader
         if: matrix.os == 'linux'
