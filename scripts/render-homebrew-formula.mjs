@@ -57,6 +57,7 @@ ${download('linux', 'x64')}
 
   def install
     bin.install "termkey"
+    doc.install "THIRD-PARTY-LICENSES.txt"
   end
 
   test do
