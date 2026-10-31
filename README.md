@@ -203,9 +203,17 @@ no conversion or encryption change is required for another platform.
 
 Master passwords and secrets are not sent in update requests. GitHub update
 checks can occur at startup; vault operations otherwise require no online account.
-Zeroization and process hardening reduce exposure but do not guarantee that no
-sensitive data reaches OS paging, crash dumps, terminal history, screenshots, or
-other processes. Memory locking and dump prevention have OS-specific limits.
+Zeroization reduces exposure, but vault allocations are not currently locked in
+RAM: paging, hibernation, screenshots, and privileged tools can retain sensitive
+data. Unix startup disables ordinary core dumps with `RLIMIT_CORE`; Windows asks
+Windows Error Reporting to exclude heap data and disable crash/hang snapshots.
+TermKey reports failures to apply these controls. Administrator dump policies and
+external debuggers can bypass them; they do not guarantee that no dump is possible.
+
+Private temporary files are flushed before replacement. Parent-directory syncing
+is best effort on Unix and is not performed on Windows. Atomic replacement avoids
+partial file writes but cannot guarantee durability through power loss on every
+filesystem. Keep independent encrypted backups.
 
 Before clearing a secret, TermKey checks its copy token and the current clipboard
 text. External applications can race that check or copy identical text, so clearing
