@@ -49,11 +49,11 @@ set -euo pipefail
 printf "codesign %s\\n" "$*" >> "$TERMKEY_TEST_LOG"
 case "$1,${2-},${3-},${4-}" in
   --verify,--strict,--verbose=2,*)
-    [[ $# -eq 4 && ( "$4" == "$TERMKEY_TEST_DMG_PATH" || "$4" == */termkey || "$4" == */termkey-native-host ) ]] || exit 64
+    [[ $# -eq 4 && ( "$4" == "$TERMKEY_TEST_DMG_PATH" || "$4" == */termkey ) ]] || exit 64
     [[ "${TERMKEY_TEST_FAIL_CODESIGN_VERIFY:-}" != "$4" ]] || exit 70
     ;;
   -dv,--verbose=4,*,*)
-    [[ $# -eq 3 && ( "$3" == "$TERMKEY_TEST_DMG_PATH" || "$3" == */termkey || "$3" == */termkey-native-host ) ]] || exit 64
+    [[ $# -eq 3 && ( "$3" == "$TERMKEY_TEST_DMG_PATH" || "$3" == */termkey ) ]] || exit 64
     ;;
   *) exit 64 ;;
 esac
@@ -151,7 +151,6 @@ if [[ "$1" == "-x" && "$2" == "-k" && "$3" == "$TERMKEY_TEST_ZIP_PATH" && $# -eq
   destination=${4:?}
   mkdir -p "$destination"
   : > "$destination/termkey"
-  : > "$destination/termkey-native-host"
 else
   exit 64
 fi'
@@ -159,13 +158,13 @@ fi'
 write_shim lipo '#!/usr/bin/env bash
 set -euo pipefail
 printf "lipo %s\\n" "$*" >> "$TERMKEY_TEST_LOG"
-[[ $# -eq 2 && "$1" == "-archs" && ( "$2" == */termkey || "$2" == */termkey-native-host ) ]] || exit 64
+[[ $# -eq 2 && "$1" == "-archs" && ( "$2" == */termkey ) ]] || exit 64
 printf "%s\\n" "${TERMKEY_TEST_ARCH:-arm64}"'
 
 write_shim otool '#!/usr/bin/env bash
 set -euo pipefail
 printf "otool %s\\n" "$*" >> "$TERMKEY_TEST_LOG"
-[[ $# -eq 2 && "$1" == "-l" && ( "$2" == */termkey || "$2" == */termkey-native-host ) ]] || exit 64
+[[ $# -eq 2 && "$1" == "-l" && ( "$2" == */termkey ) ]] || exit 64
 cat <<OUTPUT
 Load command 8
       cmd LC_BUILD_VERSION
@@ -253,7 +252,7 @@ export TERMKEY_TEST_PKG_PATH="$artifacts_dir/TermKey.pkg"
 export TERMKEY_TEST_DMG_PATH="$artifacts_dir/TermKey.dmg"
 export TERMKEY_TEST_ZIP_PATH="$artifacts_dir/TermKey.zip"
 export APPLE_NOTARY_KEY_BASE64=encoded-notary-key
-export TERMKEY_TEST_ZIP_ENTRIES=$'termkey\ntermkey-native-host'
+export TERMKEY_TEST_ZIP_ENTRIES=$'termkey'
 
 run_case accepted pkg
 assert_log_contains 'notarytool submit'
@@ -308,13 +307,9 @@ assert_log_count "spctl -a -vv -t open --context context:primary-signature $arti
 assert_log_count "ditto -x -k $artifacts_dir/TermKey.zip" 1
 assert_log_count "unzip -Z1 $artifacts_dir/TermKey.zip" 1
 assert_log_regex_count '^codesign --verify --strict --verbose=2 .*/termkey$' 1
-assert_log_regex_count '^codesign --verify --strict --verbose=2 .*/termkey-native-host$' 1
 assert_log_regex_count '^codesign -dv --verbose=4 .*/termkey$' 1
-assert_log_regex_count '^codesign -dv --verbose=4 .*/termkey-native-host$' 1
 assert_log_regex_count '^lipo -archs .*/termkey$' 1
-assert_log_regex_count '^lipo -archs .*/termkey-native-host$' 1
 assert_log_regex_count '^otool -l .*/termkey$' 1
-assert_log_regex_count '^otool -l .*/termkey-native-host$' 1
 
 if TERMKEY_TEST_ARCH=x86_64 bash "$verify_script" \
   "$artifacts_dir/TermKey.pkg" "$artifacts_dir/TermKey.dmg" "$artifacts_dir/TermKey.zip" TEAM123456 \
@@ -351,7 +346,7 @@ if TERMKEY_TEST_PACKAGE_TEAM=OTHERTEAM TERMKEY_TEST_PACKAGE_DECOY_TEAM=TEAM12345
   exit 1
 fi
 
-if TERMKEY_TEST_ZIP_ENTRIES=$'termkey\ntermkey-native-host\nunexpected-root/' bash "$verify_script" \
+if TERMKEY_TEST_ZIP_ENTRIES=$'termkey\nunexpected-root/' bash "$verify_script" \
   "$artifacts_dir/TermKey.pkg" "$artifacts_dir/TermKey.dmg" "$artifacts_dir/TermKey.zip" TEAM123456 \
   >/dev/null 2>&1; then
   echo 'unexpected ZIP root unexpectedly passed verification' >&2
@@ -373,11 +368,11 @@ if bash "$verify_script" \
 fi
 
 for malformed_entries in \
-  $'/termkey\ntermkey-native-host' \
-  $'termkey/../escape\ntermkey-native-host' \
-  $'termkey//extra\ntermkey-native-host' \
-  $'termkey\\backslash\ntermkey-native-host' \
-  $'./termkey\ntermkey-native-host'; do
+  $'/termkey' \
+  $'termkey/../escape' \
+  $'termkey//extra' \
+  $'termkey\\backslash' \
+  $'./termkey'; do
   : > "$TERMKEY_TEST_LOG"
   if TERMKEY_TEST_ZIP_ENTRIES="$malformed_entries" bash "$verify_script" \
     "$artifacts_dir/TermKey.pkg" "$artifacts_dir/TermKey.dmg" "$artifacts_dir/TermKey.zip" TEAM123456 \

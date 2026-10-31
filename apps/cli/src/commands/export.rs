@@ -48,7 +48,7 @@ pub fn run_with_vault(vault: &VaultData, directory: &str) -> Result<()> {
     );
     println!();
 
-    let backup_name: String = Input::new()
+    let backup_name: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Backup name")
         .default("backup".to_string())
         .interact_text()

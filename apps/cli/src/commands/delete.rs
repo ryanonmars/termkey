@@ -20,7 +20,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         .resolve_entry_name(name)
         .ok_or_else(|| TermKeyError::EntryNotFound(name.to_string()))?;
 
-    let confirm = Confirm::new()
+    let confirm = Confirm::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt(format!(
             "Are you sure you want to delete '{}'? This cannot be undone",
             resolved_name

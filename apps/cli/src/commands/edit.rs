@@ -32,7 +32,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     println!();
 
     // Name
-    let new_name: String = Input::new()
+    let new_name: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt(format!("Name [{}]", entry.name))
         .default(entry.name.clone())
         .interact_text()
@@ -49,7 +49,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
         SecretType::Other(_) => 3,
     };
     let type_options = &["Private Key", "Seed Phrase", "Password", "Other", "Exit"];
-    let type_idx = Select::new()
+    let type_idx = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt(format!("Secret type [{}]", entry.secret_type))
         .items(type_options)
         .default(current_type_idx)
@@ -69,7 +69,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
                 SecretType::Other(label) => label.clone(),
                 _ => String::new(),
             };
-            let custom_type: String = Input::new()
+            let custom_type: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt(format!(
                     "Custom secret type [{}]",
                     if current_other.is_empty() {
@@ -93,7 +93,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
 
     // Secret (optional change)
     println!("  {} {}", "Current secret:".dimmed(), "••••••••".dimmed());
-    let change_secret = dialoguer::Confirm::new()
+    let change_secret = dialoguer::Confirm::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Change secret?")
         .default(false)
         .interact()
@@ -128,7 +128,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             String::new()
         };
 
-        let uname: String = Input::new()
+        let uname: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt(format!(
                 "Username [{}]",
                 if current_uname.is_empty() {
@@ -142,7 +142,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             .map_err(|e| TermKeyError::Io(std::io::Error::other(e)))?;
         let uname = uname.trim().to_string();
 
-        let url_val: String = Input::new()
+        let url_val: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt(format!(
                 "URL [{}]",
                 if current_url.is_empty() {
@@ -174,7 +174,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             String::new()
         };
 
-        let new_network: String = Input::new()
+        let new_network: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt(format!(
                 "Network [{}]",
                 if default_network.is_empty() {
@@ -198,7 +198,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
             } else {
                 String::new()
             };
-            let addr: String = Input::new()
+            let addr: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt(format!(
                     "Public address [{}]",
                     if current.is_empty() {
@@ -231,7 +231,7 @@ pub fn run_with_vault(vault: &mut VaultData, name: &str) -> Result<()> {
     };
 
     // Notes
-    let new_notes: String = Input::new()
+    let new_notes: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt(format!(
             "Notes [{}]",
             if entry.notes.is_empty() {

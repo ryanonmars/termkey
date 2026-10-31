@@ -68,6 +68,7 @@ pub struct App {
     view: AppView,
     should_quit: bool,
     clipboard_clear_time: Option<Instant>,
+    clipboard_cleanup: Option<crate::clipboard::ClipboardCleanup>,
     pending_export_password: Option<String>,
     pending_export_name: Option<String>,
     pending_new_password: Option<Zeroizing<String>>,
@@ -121,6 +122,15 @@ pub enum InputPurpose {
     ConfirmPassword,
 }
 
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.clipboard_cleanup.take() {
+            // Covers normal quit, render/input errors, and unwinding.
+            let _ = cleanup.clear_now();
+        }
+    }
+}
+
 impl App {
     pub fn new() -> Result<Self> {
         let config = crate::config::load_config()?;
@@ -142,6 +152,7 @@ impl App {
             view,
             should_quit: false,
             clipboard_clear_time: None,
+            clipboard_cleanup: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,
@@ -424,6 +435,17 @@ impl App {
 
     fn start_recovery(&mut self) -> Result<()> {
         let config = crate::config::load_config()?;
+        if let Some(crate::config::RecoveryConfig::V2(recovery)) = &config.recovery {
+            let bytes = storage::read_encoded_file(&storage::vault_path())?;
+            let header = crate::vault::format::parse_header(
+                &bytes,
+                crate::vault::model::VaultHeader::MAGIC,
+            )?;
+            if !recovery.is_valid_for(header.vault_id) {
+                self.view = AppView::NoRecovery;
+                return Ok(());
+            }
+        }
         match config.recovery {
             Some(recovery_config) => {
                 self.view = AppView::Recovery(RecoveryScreen::new(recovery_config));
@@ -469,7 +491,7 @@ impl App {
                         self.session = Some(session);
                         self.config = crate::config::load_config()?;
                         self.show_success(
-                            "Vault recovered. Your recovery phrase remains active.".to_string(),
+                            "Vault recovered with a new encryption key. The previous recovery phrase is no longer active. Configure a new recovery phrase in Settings.".to_string(),
                         );
                     }
                     Err(error) => {
@@ -498,24 +520,37 @@ impl App {
 
         match action {
             super::screens::nuke::NukeAction::Cancel => {
-                self.view = AppView::Login(LoginScreen::new());
+                if self.session.is_some() {
+                    self.return_to_dashboard();
+                } else {
+                    self.view = AppView::Login(LoginScreen::new());
+                }
             }
             super::screens::nuke::NukeAction::Confirm => {
-                if let Err(e) = storage::delete_vault() {
+                if let Some(cleanup) = self.clipboard_cleanup.take() {
+                    let _ = cleanup.clear_now();
+                }
+                self.clipboard_clear_time = None;
+                self.pending_new_password = None;
+                self.pending_export_password = None;
+                self.pending_export_name = None;
+                self.pending_view_entry_idx = None;
+                self.pending_copy_entry_idx = None;
+                self.pending_delete_entry_name = None;
+                self.session = None;
+                if let Err(e) = crate::commands::reset::reset_current_vault() {
                     self.view = AppView::Login(LoginScreen::new());
                     self.show_message(
-                        "Delete Failed".to_string(),
+                        "Reset Failed".to_string(),
                         format!(
-                            "Failed to delete vault: {}\n\nYour vault has not been modified.",
+                            "Failed to finish resetting the vault: {}\n\nSome data files may already have been removed.",
                             e
                         ),
                         true,
                     );
                     return Ok(());
                 }
-                let _ = crate::config::delete_config(); // best-effort; vault is already gone
                 self.config = crate::config::model::Config::default();
-                self.session = None;
                 self.view = AppView::Wizard(WizardScreen::new());
             }
             super::screens::nuke::NukeAction::Continue => {}
@@ -674,7 +709,13 @@ impl App {
                 }
                 KeyCode::Char('S') => {
                     self.config = crate::config::load_config()?;
-                    self.view = AppView::Settings(SettingsScreen::new(self.config.clone()));
+                    let mut display_config = self.config.clone();
+                    if !self.session.as_ref().is_some_and(|session| {
+                        display_config.has_active_recovery_for(session.vault_id())
+                    }) {
+                        display_config.recovery = None;
+                    }
+                    self.view = AppView::Settings(SettingsScreen::new(display_config));
                     return Ok(());
                 }
                 KeyCode::Char('X') => {
@@ -689,7 +730,8 @@ impl App {
                 }
                 KeyCode::Char('P') => {
                     let input =
-                        InputScreen::new("Change Password", "Enter new master password:", true);
+                        InputScreen::new("Change Password", "Enter new master password:", true)
+                            .with_notice("Your old recovery phrase will stop working.\nSet up a new phrase in Settings afterward.");
                     self.view = AppView::Input(input, InputPurpose::ChangePassword);
                     return Ok(());
                 }
@@ -723,6 +765,9 @@ impl App {
             }
             super::screens::settings::SettingsAction::Cancel => {
                 self.return_to_dashboard();
+            }
+            super::screens::settings::SettingsAction::ResetVault => {
+                self.view = AppView::Nuke(NukeScreen::new());
             }
             super::screens::settings::SettingsAction::SetupRecovery => {
                 let phrase = crate::crypto::recovery::generate_recovery_phrase()?;
@@ -1067,7 +1112,9 @@ impl App {
     fn copy_to_clipboard(&mut self, entry_name: &str, secret: Zeroizing<String>) -> Result<()> {
         let timeout = self.config.clipboard_timeout_secs;
         let cleanup = crate::clipboard::copy_and_clear(secret, Duration::from_secs(timeout))?;
-        drop(cleanup);
+        if let Some(previous) = self.clipboard_cleanup.replace(cleanup) {
+            previous.clear_now()?;
+        }
         self.clipboard_clear_time = Some(Instant::now() + Duration::from_secs(timeout));
         self.view = AppView::CopyCountdown {
             entry_name: entry_name.to_string(),
@@ -1154,7 +1201,7 @@ impl App {
                     Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    " Delete vault & start over",
+                    " Reset vault & start over",
                     Style::default().fg(Color::White),
                 ),
                 Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
@@ -1612,7 +1659,6 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -1646,6 +1692,7 @@ mod tests {
             view,
             should_quit: false,
             clipboard_clear_time: None,
+            clipboard_cleanup: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,
@@ -1673,6 +1720,46 @@ mod tests {
         )
         .unwrap()
         .vault
+    }
+
+    #[test]
+    fn settings_reset_clears_active_data_and_returns_to_setup() {
+        let _guard = env_lock().lock().unwrap();
+        let (dir, path, mut app) = app_with_protected_entry();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+        let backup = dir.path().join("backup.termkey");
+        std::fs::write(&backup, "backup sentinel").unwrap();
+        app.view = AppView::Settings(super::SettingsScreen::new(Config::default()));
+        app.handle_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+        app.handle_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+        app.handle_key(KeyCode::Enter, KeyModifiers::NONE).unwrap();
+        assert!(matches!(app.view, AppView::Nuke(_)));
+        assert!(path.exists());
+        enter_text(&mut app, "DELETE");
+        let previous = std::env::var_os("TERMKEY_VAULT_DIR");
+        std::env::set_var("TERMKEY_VAULT_DIR", dir.path());
+        let result = app.handle_key(KeyCode::Enter, KeyModifiers::NONE);
+        match previous {
+            Some(value) => std::env::set_var("TERMKEY_VAULT_DIR", value),
+            None => std::env::remove_var("TERMKEY_VAULT_DIR"),
+        }
+        result.unwrap();
+        assert!(matches!(app.view, AppView::Wizard(_)));
+        assert!(app.session.is_none());
+        assert!(!path.exists());
+        assert!(!config_path.exists());
+        assert_eq!(std::fs::read_to_string(backup).unwrap(), "backup sentinel");
+    }
+
+    #[test]
+    fn cancelling_reset_from_settings_keeps_session_and_vault() {
+        let (_dir, path, mut app) = app_with_protected_entry();
+        app.view = AppView::Nuke(super::NukeScreen::new());
+        app.handle_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+        assert!(app.session.is_some());
+        assert!(matches!(app.view, AppView::Dashboard(_)));
+        assert!(path.exists());
     }
 
     #[test]
@@ -1710,6 +1797,7 @@ mod tests {
             view: AppView::Login(crate::ui::screens::login::LoginScreen::new()),
             should_quit: false,
             clipboard_clear_time: None,
+            clipboard_cleanup: None,
             pending_export_password: None,
             pending_export_name: None,
             pending_new_password: None,
@@ -1731,13 +1819,52 @@ mod tests {
 
         assert!(app.session.is_some());
         assert!(matches!(
-            app.view,
+            &app.view,
             AppView::Message {
                 message,
                 is_error: false,
                 ..
             } if message.to_ascii_lowercase().contains("recovery phrase")
         ));
+    }
+
+    #[test]
+    fn dropping_tui_clears_pending_secret_on_quit_and_early_return() {
+        let _clipboard_guard = crate::clipboard::test_guard();
+        use crate::clipboard::{copy_and_clear_with_backend, ClipboardBackend};
+        use std::sync::{Arc, Mutex};
+
+        struct PersistentClipboard(Arc<Mutex<String>>);
+        impl ClipboardBackend for PersistentClipboard {
+            fn get_text(&mut self) -> std::result::Result<String, String> {
+                Ok(self.0.lock().unwrap().clone())
+            }
+
+            fn set_text(&mut self, value: String) -> std::result::Result<(), String> {
+                *self.0.lock().unwrap() = value;
+                Ok(())
+            }
+        }
+
+        for quit_explicitly in [true, false] {
+            let (_dir, _path, mut app) = app_with_protected_entry();
+            let clipboard = Arc::new(Mutex::new(String::new()));
+            app.clipboard_cleanup = Some(
+                copy_and_clear_with_backend(
+                    PersistentClipboard(Arc::clone(&clipboard)),
+                    Zeroizing::new("test secret".to_string()),
+                    std::time::Duration::from_secs(3600),
+                )
+                .unwrap(),
+            );
+            if quit_explicitly {
+                app.handle_key(KeyCode::Char('q'), KeyModifiers::CONTROL)
+                    .unwrap();
+                assert!(app.should_quit);
+            }
+            drop(app);
+            assert!(clipboard.lock().unwrap().is_empty());
+        }
     }
 
     #[test]
@@ -1855,7 +1982,7 @@ mod tests {
         app.handle_key(KeyCode::Enter, KeyModifiers::NONE).unwrap();
 
         assert!(matches!(
-            app.view,
+            &app.view,
             AppView::Message {
                 is_error: false,
                 ..
@@ -1893,7 +2020,7 @@ mod tests {
             .unwrap();
 
         assert!(matches!(
-            app.view,
+            &app.view,
             AppView::Message {
                 is_error: false,
                 ..

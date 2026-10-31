@@ -74,7 +74,7 @@ fn derive_eth_from_privkey(secret: &str) -> Result<String> {
     let signing_key = SigningKey::from_bytes((&key_bytes).into())
         .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid ETH private key: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
-    let point = verifying_key.to_encoded_point(false);
+    let point = verifying_key.to_sec1_point(false);
     Ok(eth_address_from_pubkey_bytes(point.as_bytes()))
 }
 
@@ -101,7 +101,7 @@ fn derive_eth_from_seed(secret: &str) -> Result<String> {
     let signing_key = SigningKey::from_bytes((&key_bytes).into())
         .map_err(|e| TermKeyError::DerivationFailed(format!("BIP32 key error: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
-    let point = verifying_key.to_encoded_point(false);
+    let point = verifying_key.to_sec1_point(false);
     Ok(eth_address_from_pubkey_bytes(point.as_bytes()))
 }
 
@@ -335,7 +335,7 @@ fn secp256k1_pubkey_compressed(key: &[u8; 32]) -> Result<[u8; 33]> {
     let signing_key = SigningKey::from_bytes(key.into())
         .map_err(|e| TermKeyError::DerivationFailed(format!("Invalid key: {}", e)))?;
     let verifying_key = signing_key.verifying_key();
-    let point = verifying_key.to_encoded_point(true);
+    let point = verifying_key.to_sec1_point(true);
     let bytes = point.as_bytes();
     let mut result = [0u8; 33];
     result.copy_from_slice(bytes);
@@ -351,8 +351,8 @@ fn secp256k1_add_scalars(parent: &[u8; 32], tweak: &[u8]) -> Result<[u8; 32]> {
     let parent_uint = k256::U256::from_be_slice(parent);
     let tweak_uint = k256::U256::from_be_slice(tweak);
 
-    let parent_scalar = <Scalar as Reduce<k256::U256>>::reduce(parent_uint);
-    let tweak_scalar = <Scalar as Reduce<k256::U256>>::reduce(tweak_uint);
+    let parent_scalar = <Scalar as Reduce<k256::U256>>::reduce(&parent_uint);
+    let tweak_scalar = <Scalar as Reduce<k256::U256>>::reduce(&tweak_uint);
 
     // Scalar addition is mod n
     let sum = parent_scalar + tweak_scalar;
@@ -412,6 +412,18 @@ mod tests {
         let addr = result.unwrap();
         // This is the address Phantom derives for this mnemonic at account 0
         assert_eq!(addr, "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk");
+    }
+
+    #[cfg(feature = "derive-btc")]
+    #[test]
+    fn btc_seed_matches_bip84_test_vector() {
+        // https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki#test-vectors
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let address = derive_address(mnemonic, &SecretType::SeedPhrase, "Bitcoin").unwrap();
+        assert_eq!(
+            address.as_deref(),
+            Some("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu")
+        );
     }
 
     #[cfg(feature = "derive-btc")]

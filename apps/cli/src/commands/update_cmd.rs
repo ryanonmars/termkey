@@ -16,7 +16,10 @@ pub fn run() -> Result<()> {
     println!("  TermKey Update");
     println!("  ──────────────");
     println!("  Current version: v{}", CURRENT_VERSION);
-    println!("  Latest release: {}", latest_release_label(&update_status));
+    println!(
+        "  Latest release: {}",
+        links::sanitize_terminal_text(&latest_release_label(&update_status))
+    );
     println!("  Install method: {}", install_method.label());
     println!();
 
@@ -34,7 +37,7 @@ pub fn run() -> Result<()> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InstallMethod {
+pub(crate) enum InstallMethod {
     Homebrew,
     DirectDownload,
     SourceBuild,
@@ -63,7 +66,8 @@ fn run_homebrew_update(update_status: &UpdateStatus) -> Result<()> {
         UpdateStatus::Available(info) => {
             println!(
                 "  Update available: v{} -> v{}",
-                CURRENT_VERSION, info.latest_version
+                CURRENT_VERSION,
+                links::sanitize_terminal_text(&info.latest_version)
             );
         }
         UpdateStatus::Unknown => {
@@ -114,7 +118,8 @@ fn print_manual_update_instructions(update_status: &UpdateStatus, install_method
         UpdateStatus::Available(info) => {
             println!(
                 "  Update available: v{} -> v{}",
-                CURRENT_VERSION, info.latest_version
+                CURRENT_VERSION,
+                links::sanitize_terminal_text(&info.latest_version)
             );
         }
         UpdateStatus::Unknown => {
@@ -154,7 +159,7 @@ fn release_url_for_status(update_status: &UpdateStatus) -> String {
     }
 }
 
-fn detect_install_method(current_exe: &Path) -> InstallMethod {
+pub(crate) fn detect_install_method(current_exe: &Path) -> InstallMethod {
     let candidate_paths = executable_candidate_paths(current_exe);
 
     if candidate_paths

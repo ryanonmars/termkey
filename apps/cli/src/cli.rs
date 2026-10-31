@@ -86,7 +86,14 @@ pub enum Commands {
     #[command(alias = "upgrade")]
     Update,
 
-    /// Remove TermKey data and browser integration (encrypted backups are preserved)
+    /// Delete vault data and settings; keep TermKey installed and preserve encrypted backups
+    Reset {
+        /// Skip the interactive confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Uninstall TermKey while preserving vault data, settings, and encrypted backups
     Uninstall {
         /// Skip the interactive confirmation
         #[arg(long)]
@@ -109,25 +116,4 @@ pub enum Commands {
         /// Name or index number of the entry
         name: String,
     },
-
-    /// Install or inspect browser integration support
-    Browser {
-        #[command(subcommand)]
-        command: BrowserCommands,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum BrowserCommands {
-    /// Install the native host and open the Chrome Web Store listing
-    Install,
-
-    /// Show the current browser integration status
-    Status,
-
-    /// Repair the native host and open the Chrome Web Store listing
-    Repair,
-
-    /// Remove the native messaging manifest
-    Uninstall,
 }

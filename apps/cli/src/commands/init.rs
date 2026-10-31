@@ -44,7 +44,7 @@ pub fn run() -> Result<()> {
     eprintln!("Encrypting vault...");
     let session = VaultSession::create(vault, password, storage::vault_path())?;
 
-    let setup_recovery = Confirm::new()
+    let setup_recovery = Confirm::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Set up a 24-word recovery phrase now?")
         .default(true)
         .interact()

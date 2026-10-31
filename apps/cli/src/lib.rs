@@ -5,7 +5,6 @@ pub mod config;
 pub mod crypto;
 pub mod error;
 pub mod links;
-pub mod native;
 pub mod repl;
 pub mod ui;
 pub mod update;

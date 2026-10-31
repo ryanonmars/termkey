@@ -73,7 +73,7 @@ pub fn run(filter: Option<&str>) -> Result<()> {
                 "{}",
                 format!(
                     "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password, other",
-                    f
+                    crate::links::sanitize_terminal_text(f)
                 )
                 .red()
             );
@@ -98,7 +98,7 @@ pub fn run_with_vault(vault: &crate::vault::model::VaultData, filter: Option<&st
                 "{}",
                 format!(
                     "Unknown filter '{}'. Valid filters: privatekey, seedphrase, password, other",
-                    f
+                    crate::links::sanitize_terminal_text(f)
                 )
                 .red()
             );
@@ -221,7 +221,7 @@ fn interactive_loop(session: &mut VaultSession, filter: Option<&str>) -> Result<
             .collect();
         items.push("Exit".to_string());
 
-        let selection = Select::new()
+        let selection = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("Select an entry")
             .items(&items)
             .default(0)
@@ -242,7 +242,7 @@ fn interactive_loop(session: &mut VaultSession, filter: Option<&str>) -> Result<
         let entry_name = &filtered[idx].1.name;
 
         let actions = &["View", "Copy to Clipboard", "Edit", "Delete", "Back"];
-        let action = Select::new()
+        let action = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt(format!("Action for '{}'", entry_name))
             .items(actions)
             .default(0)
@@ -301,7 +301,6 @@ mod tests {
             public_address: None,
             username: Some("v3-user".into()),
             url: Some("https://v3.example".into()),
-            site_rules: Vec::new(),
             notes: "authenticated metadata".into(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

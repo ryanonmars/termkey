@@ -15,6 +15,10 @@ func escapeAppleScriptString(_ value: String) -> String {
         .replacingOccurrences(of: "\"", with: "\\\"")
 }
 
+func shellQuote(_ value: String) -> String {
+    "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
+}
+
 let bundleURL = Bundle.main.bundleURL
 let binaryURL = bundleURL
     .appendingPathComponent("Contents")
@@ -26,7 +30,7 @@ guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
     fail("The bundled termkey binary is missing.")
 }
 
-let command = "clear; exec \(binaryURL.path)"
+let command = "clear; exec \(shellQuote(binaryURL.path))"
 let escapedCommand = escapeAppleScriptString(command)
 let scriptSource = """
 tell application "Terminal"

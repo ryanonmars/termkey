@@ -65,8 +65,6 @@ pub struct Entry {
     pub username: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
-    #[serde(default)]
-    pub site_rules: Vec<String>,
     pub notes: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -244,8 +242,6 @@ pub struct EntryMeta {
     pub username: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
-    #[serde(default)]
-    pub site_rules: Vec<String>,
     pub notes: String,
     #[serde(default)]
     pub has_secondary_password: bool,
@@ -486,7 +482,6 @@ impl VaultData {
                 public_address: e.public_address.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
-                site_rules: e.site_rules.clone(),
                 notes: e.notes.clone(),
                 has_secondary_password: e.has_secondary_password,
             })
@@ -526,7 +521,6 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -976,6 +970,23 @@ mod tests {
 
         let empty_name_vault = make_vault(&[""]);
         assert!(empty_name_vault.validate().is_err());
+    }
+
+    #[test]
+    fn entry_with_legacy_site_rules_preserves_terminal_fields() {
+        let mut value = serde_json::to_value(make_entry("Saved login")).unwrap();
+        value["secret_type"] = serde_json::json!("Password");
+        value["username"] = serde_json::json!("alice");
+        value["url"] = serde_json::json!("https://example.com/login");
+        value["site_rules"] = serde_json::json!(["origin:https://example.com"]);
+
+        let entry: Entry = serde_json::from_value(value).unwrap();
+        entry.validate().unwrap();
+        assert_eq!(&*entry.reveal_secret(None).unwrap(), "secret");
+        assert_eq!(entry.username.as_deref(), Some("alice"));
+        assert_eq!(entry.url.as_deref(), Some("https://example.com/login"));
+        let saved = serde_json::to_value(&entry).unwrap();
+        assert!(saved.get("site_rules").is_none());
     }
 
     #[test]

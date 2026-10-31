@@ -48,9 +48,16 @@ impl ClipboardBackend for ArboardBackend {
 #[derive(Debug)]
 pub struct ClipboardCleanup {
     receiver: mpsc::Receiver<()>,
+    cancel: mpsc::Sender<()>,
 }
 
 impl ClipboardCleanup {
+    /// Wake the worker and wait for its conditional cleanup before the process exits.
+    pub fn clear_now(self) -> Result<()> {
+        let _ = self.cancel.send(());
+        self.wait()
+    }
+
     /// Wait until the cleanup worker has attempted to clear or preserve the clipboard.
     pub fn wait(self) -> Result<()> {
         self.receiver.recv().map_err(|error| {
@@ -101,7 +108,21 @@ fn copy_and_clear_with_coordinator<B: ClipboardBackend>(
     text: Zeroizing<String>,
     clear_after: Duration,
 ) -> Result<ClipboardCleanup> {
-    copy_and_clear_with_coordinator_and_wait(coordinator, backend, text, clear_after, thread::sleep)
+    copy_and_clear_with_coordinator_and_wait(
+        coordinator,
+        backend,
+        text,
+        clear_after,
+        |duration, cancellation| {
+            let started = std::time::Instant::now();
+            match cancellation.recv_timeout(duration) {
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    thread::sleep(duration.saturating_sub(started.elapsed()));
+                }
+                Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        },
+    )
 }
 
 fn copy_and_clear_with_coordinator_and_wait<B, W>(
@@ -113,7 +134,7 @@ fn copy_and_clear_with_coordinator_and_wait<B, W>(
 ) -> Result<ClipboardCleanup>
 where
     B: ClipboardBackend,
-    W: FnOnce(Duration) + Send + 'static,
+    W: FnOnce(Duration, mpsc::Receiver<()>) + Send + 'static,
 {
     let generation = {
         let mut ownership = coordinator.lock().map_err(|_| {
@@ -131,8 +152,9 @@ where
     };
 
     let (completion_sender, receiver) = mpsc::channel();
+    let (cancel, cancellation) = mpsc::channel();
     thread::spawn(move || {
-        wait_for_timeout(clear_after);
+        wait_for_timeout(clear_after, cancellation);
         if let Ok(mut ownership) = coordinator.lock() {
             if ownership.current == Some(generation) {
                 if matches!(backend.get_text(), Ok(current) if current == text.as_str()) {
@@ -146,16 +168,25 @@ where
         let _ = completion_sender.send(());
     });
 
-    Ok(ClipboardCleanup { receiver })
+    Ok(ClipboardCleanup { receiver, cancel })
+}
+
+#[cfg(test)]
+pub(crate) fn test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         copy_and_clear_with_backend, copy_and_clear_with_coordinator_and_wait,
-        copy_and_clear_with_factory, ClipboardBackend, ClipboardCoordinator,
+        copy_and_clear_with_factory, test_guard, ClipboardBackend, ClipboardCoordinator,
     };
-    use std::sync::{mpsc, Arc, Barrier, Mutex, MutexGuard, OnceLock};
+    use std::sync::{mpsc, Arc, Barrier, Mutex};
     use std::thread;
     use std::time::Duration;
     use zeroize::Zeroizing;
@@ -241,14 +272,6 @@ mod tests {
         )
     }
 
-    fn test_guard() -> MutexGuard<'static, ()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
     fn test_coordinator() -> ClipboardCoordinator {
         Arc::new(Mutex::new(Default::default()))
     }
@@ -265,7 +288,7 @@ mod tests {
             backend,
             Zeroizing::new(text.to_string()),
             Duration::ZERO,
-            move |_| {
+            move |_, _| {
                 let _ = cleanup_gate.recv();
             },
         )?;
@@ -290,6 +313,71 @@ mod tests {
             .send(())
             .expect("cleanup worker exited before its timeout gate was released");
         wait_for_cleanup(control.backend);
+    }
+
+    #[test]
+    fn clear_now_interrupts_long_timeout_and_finishes_cleanup() {
+        let _guard = test_guard();
+        let state = Arc::new(Mutex::new(ClipboardState::default()));
+        let (backend, control) = fake_backend("operation", Arc::clone(&state), false, false);
+        let cleanup = copy_and_clear_with_backend(
+            backend,
+            Zeroizing::new("secret".to_string()),
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        control.allow_read.send(()).unwrap();
+        let (done, completed) = mpsc::channel();
+        thread::spawn(move || done.send(cleanup.clear_now()).unwrap());
+        completed
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.lock().unwrap().text, "");
+    }
+
+    #[test]
+    fn clear_now_preserves_external_replacement() {
+        let _guard = test_guard();
+        let state = Arc::new(Mutex::new(ClipboardState::default()));
+        let (backend, control) = fake_backend("operation", Arc::clone(&state), false, false);
+        let cleanup = copy_and_clear_with_backend(
+            backend,
+            Zeroizing::new("secret".to_string()),
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        state.lock().unwrap().text = "external value".to_string();
+        control.allow_read.send(()).unwrap();
+        cleanup.clear_now().unwrap();
+        assert_eq!(state.lock().unwrap().text, "external value");
+    }
+
+    #[test]
+    fn clear_now_preserves_newer_identical_copy() {
+        let _guard = test_guard();
+        let state = Arc::new(Mutex::new(ClipboardState::default()));
+        let (older_backend, _older_control) =
+            fake_backend("older", Arc::clone(&state), false, false);
+        let (newer_backend, newer_control) =
+            fake_backend("newer", Arc::clone(&state), false, false);
+        let older = copy_and_clear_with_backend(
+            older_backend,
+            Zeroizing::new("same secret".to_string()),
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        let newer = copy_and_clear_with_backend(
+            newer_backend,
+            Zeroizing::new("same secret".to_string()),
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        older.clear_now().unwrap();
+        assert_eq!(state.lock().unwrap().text, "same secret");
+        newer_control.allow_read.send(()).unwrap();
+        newer.clear_now().unwrap();
+        assert_eq!(state.lock().unwrap().text, "");
     }
 
     #[test]
@@ -462,7 +550,7 @@ mod tests {
             backend,
             Zeroizing::new("secret".to_string()),
             Duration::ZERO,
-            move |_| {
+            move |_, _| {
                 timeout_gate.recv().unwrap();
             },
         )
@@ -528,7 +616,7 @@ mod tests {
             failed_backend,
             Zeroizing::new("newer secret".to_string()),
             Duration::ZERO,
-            move |_| {
+            move |_, _| {
                 let _ = failed_cleanup_gate.recv();
             },
         )

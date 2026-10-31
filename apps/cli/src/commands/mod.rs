@@ -1,5 +1,4 @@
 pub mod add;
-pub mod browser;
 pub mod config_cmd;
 pub mod copy;
 pub mod delete;
@@ -12,6 +11,7 @@ pub mod list;
 pub mod passwd;
 pub mod recover;
 pub mod rename;
+pub mod reset;
 pub mod search;
 pub mod uninstall;
 pub mod update_cmd;
@@ -54,7 +54,6 @@ pub(crate) mod test_support {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

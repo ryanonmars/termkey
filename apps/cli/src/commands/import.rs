@@ -49,7 +49,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
             println!(
                 "  {} Entry '{}' already exists.",
                 "!".yellow().bold(),
-                backup_entry.name.cyan()
+                crate::links::sanitize_terminal_text(&backup_entry.name).cyan()
             );
 
             let options = &[
@@ -58,7 +58,7 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
                 "Overwrite existing",
                 "Exit",
             ];
-            let choice = Select::new()
+            let choice = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt("How to resolve?")
                 .items(options)
                 .default(0)
@@ -78,7 +78,10 @@ pub fn run_with_vault(vault: &mut VaultData, file: &str) -> Result<bool> {
                         new_name = format!("{} (imported {})", backup_entry.name, counter);
                         counter += 1;
                     }
-                    println!("  Importing as '{}'", new_name.cyan());
+                    println!(
+                        "  Importing as '{}'",
+                        crate::links::sanitize_terminal_text(&new_name).cyan()
+                    );
                     let mut entry = backup_entry;
                     entry.name = new_name;
                     candidate.push_entry(entry)?;

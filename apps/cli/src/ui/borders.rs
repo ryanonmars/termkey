@@ -567,6 +567,7 @@ fn compute_col_widths(
 
 /// Print a success message with a styled checkmark.
 pub fn print_success(msg: &str) {
+    let msg = sanitize_raw_box_text(msg);
     if !is_interactive() {
         println!("  OK: {}", msg);
         return;
@@ -577,6 +578,7 @@ pub fn print_success(msg: &str) {
 
 /// Print an error message with styling.
 pub fn print_error(msg: &str) {
+    let msg = sanitize_raw_box_text(msg);
     if !is_interactive() {
         eprintln!("  Error: {}", msg);
         return;

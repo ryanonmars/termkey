@@ -37,10 +37,7 @@ jobs:
         run: npm ci
 
       - name: Validate
-        run: npm run validate:phase1
-
-      - name: Audit JavaScript dependencies
-        run: npm audit
+        run: npm run validate
 
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit --version 0.22.2

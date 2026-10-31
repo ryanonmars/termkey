@@ -31,7 +31,6 @@ uninstaller_plist_template="$script_dir/UninstallerInfo.plist.template"
 launcher_source="$script_dir/Launcher.swift"
 uninstaller_source="$script_dir/Uninstaller.swift"
 swift_cache_dir="$staging_dir/swift-cache"
-native_host_binary_path=${TERMKEY_NATIVE_HOST_BINARY:-"$(cd "$(dirname "$binary_path")" && pwd)/termkey-native-host"}
 TERMKEY_MACOS_ARCH=${TERMKEY_MACOS_ARCH:-arm64}
 termkey_release_signing=${TERMKEY_RELEASE_SIGNING:-disabled}
 
@@ -77,11 +76,6 @@ if [[ "$termkey_release_signing" == "required" ]]; then
   esac
 fi
 
-if [[ ! -f "$native_host_binary_path" ]]; then
-  echo "native host binary not found: $native_host_binary_path" >&2
-  exit 1
-fi
-
 create_app_bundle() {
   local app_bundle_dir=$1
   local executable_name=$2
@@ -109,9 +103,7 @@ create_app_bundle() {
     local app_binary_dir="$app_resources_dir/bin"
     mkdir -p "$app_binary_dir"
     ditto --noextattr --noqtn "$binary_path" "$app_binary_dir/termkey"
-    ditto --noextattr --noqtn "$native_host_binary_path" "$app_binary_dir/termkey-native-host"
     chmod 755 "$app_binary_dir/termkey"
-    chmod 755 "$app_binary_dir/termkey-native-host"
   fi
 
   sed "s/__VERSION__/$version/g" "$plist_template_path" > "$app_info_plist"
@@ -166,16 +158,12 @@ mkdir -p "$cli_install_dir" "$output_dir"
 mkdir -p "$swift_cache_dir"
 
 ditto --noextattr --noqtn "$binary_path" "$cli_install_dir/termkey"
-ditto --noextattr --noqtn "$native_host_binary_path" "$cli_install_dir/termkey-native-host"
 chmod 755 "$cli_install_dir/termkey"
-chmod 755 "$cli_install_dir/termkey-native-host"
 create_app_bundle "$termkey_app_bundle_dir" "TermKey" "$launcher_source" "$plist_template" yes
 create_app_bundle "$uninstall_app_bundle_dir" "UninstallTermKey" "$uninstaller_source" "$uninstaller_plist_template" no
 
 verify_macho_target "$cli_install_dir/termkey"
-verify_macho_target "$cli_install_dir/termkey-native-host"
 verify_macho_target "$termkey_app_bundle_dir/Contents/Resources/bin/termkey"
-verify_macho_target "$termkey_app_bundle_dir/Contents/Resources/bin/termkey-native-host"
 verify_macho_target "$termkey_app_bundle_dir/Contents/MacOS/TermKey"
 verify_macho_target "$uninstall_app_bundle_dir/Contents/MacOS/UninstallTermKey"
 
@@ -192,9 +180,7 @@ if [[ "$termkey_release_signing" == "required" ]]; then
   }
 
   sign_application_item "$cli_install_dir/termkey"
-  sign_application_item "$cli_install_dir/termkey-native-host"
   sign_application_item "$termkey_app_bundle_dir/Contents/Resources/bin/termkey"
-  sign_application_item "$termkey_app_bundle_dir/Contents/Resources/bin/termkey-native-host"
   sign_application_item "$termkey_app_bundle_dir/Contents/MacOS/TermKey"
   sign_application_item "$termkey_app_bundle_dir"
   sign_application_item "$uninstall_app_bundle_dir/Contents/MacOS/UninstallTermKey"

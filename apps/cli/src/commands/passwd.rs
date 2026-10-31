@@ -19,9 +19,9 @@ pub fn run() -> Result<()> {
 
 pub(crate) fn password_change_success_message(active_recovery: bool) -> &'static str {
     if active_recovery {
-        "Master password changed successfully. Your recovery phrase remains active."
+        "Master password changed successfully. Recovery is active for the new encryption key."
     } else {
-        "Master password changed successfully. Configure a recovery phrase in Settings."
+        "Master password and encryption key changed successfully. Any previous recovery phrase is no longer active. Configure a new recovery phrase in Settings."
     }
 }
 
@@ -29,6 +29,7 @@ pub(crate) fn password_change_success_message(active_recovery: bool) -> &'static
 pub fn prompt_new_password() -> Result<Zeroizing<String>> {
     println!();
     println!("  {}", heading("Change master password"));
+    println!("  This rotates the encryption key. Set up a new recovery phrase afterward.");
     println!();
 
     let new_password = Zeroizing::new(
@@ -58,9 +59,9 @@ mod tests {
     fn password_change_message_only_claims_recovery_when_active() {
         assert!(password_change_success_message(true)
             .to_ascii_lowercase()
-            .contains("remains active"));
+            .contains("recovery is active"));
         let without_recovery = password_change_success_message(false).to_ascii_lowercase();
-        assert!(!without_recovery.contains("remains active"));
+        assert!(!without_recovery.contains("recovery is active"));
         assert!(without_recovery.contains("configure"));
     }
 }

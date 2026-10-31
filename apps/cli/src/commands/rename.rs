@@ -71,7 +71,6 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: String::new(),
             created_at: now - Duration::days(2),
             updated_at: now - Duration::days(1),

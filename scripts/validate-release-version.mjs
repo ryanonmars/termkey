@@ -11,23 +11,12 @@ import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), "..");
-const dependencyFields = [
-  "dependencies",
-  "devDependencies",
-  "optionalDependencies",
-  "peerDependencies",
-];
-
 function toRepoPath(path) {
   return path.split(sep).join("/");
 }
 
 function read(root, relativePath) {
   return readFileSync(resolve(root, relativePath), "utf8");
-}
-
-function readJson(root, relativePath) {
-  return JSON.parse(read(root, relativePath));
 }
 
 function tomlSection(contents, sectionName) {
@@ -125,28 +114,6 @@ function parseCargoLock(root) {
     }));
 }
 
-function npmWorkspacePatterns(rootPackage) {
-  if (Array.isArray(rootPackage.workspaces)) {
-    return rootPackage.workspaces;
-  }
-  if (Array.isArray(rootPackage.workspaces?.packages)) {
-    return rootPackage.workspaces.packages;
-  }
-  return [];
-}
-
-function discoverNpmWorkspace(root) {
-  const rootPackage = readJson(root, "package.json");
-  return npmWorkspacePatterns(rootPackage)
-    .flatMap((pattern) => expandPattern(root, pattern, "package.json"))
-    .sort()
-    .map((path) => ({
-      path,
-      manifestPath: `${path}/package.json`,
-      package: readJson(root, `${path}/package.json`),
-    }));
-}
-
 function displayVersion(value) {
   return value ?? "missing";
 }
@@ -155,23 +122,6 @@ function addVersionMismatch(errors, path, expected, actual) {
   if (actual !== expected) {
     errors.push(
       `${path}: expected ${expected}, found ${displayVersion(actual)}`,
-    );
-  }
-}
-
-function addChromeManifestVersionMismatch(errors, path, expected, actual) {
-  const expectedParts = expected.split(".");
-  const actualParts = typeof actual === "string" ? actual.split(".") : [];
-  const isStoreRevision =
-    expectedParts.length === 3 &&
-    actualParts.length === 4 &&
-    actualParts.slice(0, 3).every((part, index) => part === expectedParts[index]) &&
-    /^(?:0|[1-9]\d*)$/.test(actualParts[3] ?? "") &&
-    Number(actualParts[3]) > 0 &&
-    Number(actualParts[3]) <= 65535;
-  if (actual !== expected && !isStoreRevision) {
-    errors.push(
-      `${path}: expected ${expected} or a Chrome Store revision of it, found ${displayVersion(actual)}`,
     );
   }
 }
@@ -214,65 +164,6 @@ export function validateReleaseVersion(root, tag) {
       `Cargo.lock:${cargoPackage.name ?? cargoPackage.manifestPath}`,
       cargoPackage.version ?? canonicalVersion,
       lockPackage?.version,
-    );
-  }
-
-  const npmPackages = discoverNpmWorkspace(root);
-  const npmPackagesByName = new Map(
-    npmPackages.map((workspace) => [workspace.package.name, workspace]),
-  );
-  const packageLock = readJson(root, "package-lock.json");
-  const packageLockEntries = packageLock.packages ?? {};
-
-  for (const workspace of npmPackages) {
-    addVersionMismatch(
-      errors,
-      workspace.manifestPath,
-      canonicalVersion,
-      workspace.package.version,
-    );
-
-    const lockEntry = packageLockEntries[workspace.path];
-    addVersionMismatch(
-      errors,
-      `package-lock.json:${workspace.path}`,
-      workspace.package.version ?? canonicalVersion,
-      lockEntry?.version,
-    );
-
-    for (const field of dependencyFields) {
-      for (const [dependencyName, dependencyVersion] of Object.entries(
-        workspace.package[field] ?? {},
-      )) {
-        const localDependency = npmPackagesByName.get(dependencyName);
-        if (!dependencyName.startsWith("@termkey/") || !localDependency) {
-          continue;
-        }
-        addVersionMismatch(
-          errors,
-          `${workspace.manifestPath}:${field}.${dependencyName}`,
-          localDependency.package.version,
-          dependencyVersion,
-        );
-        addVersionMismatch(
-          errors,
-          `package-lock.json:${workspace.path}:${field}.${dependencyName}`,
-          localDependency.package.version,
-          lockEntry?.[field]?.[dependencyName],
-        );
-      }
-    }
-  }
-
-  for (const manifestPath of [
-    "apps/extension/manifest.json",
-    "apps/extension/public/manifest.json",
-  ]) {
-    addChromeManifestVersionMismatch(
-      errors,
-      manifestPath,
-      canonicalVersion,
-      readJson(root, manifestPath).version,
     );
   }
 

@@ -75,18 +75,18 @@ impl NukeScreen {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" \u{26a0}  DELETE VAULT ")
+            .title(" \u{26a0}  RESET VAULT ")
             .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
             .border_style(Style::default().fg(Color::Red));
 
         let mut lines = vec![
             Line::from(""),
             Line::from(Span::styled(
-                "  WARNING: This will permanently delete your vault.",
+                "  WARNING: This will permanently reset your vault and settings.",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::styled(
-                "  ALL stored keys and seed phrases will be lost forever.",
+                "  All stored entries will be deleted. Backups are preserved.",
                 Style::default().fg(Color::Red),
             )),
             Line::from(Span::styled(
@@ -116,7 +116,7 @@ impl NukeScreen {
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "  Enter: Confirm deletion | Esc: Cancel",
+            "  Enter: Confirm reset | Esc: Cancel",
             Style::default().fg(Color::DarkGray),
         )));
 

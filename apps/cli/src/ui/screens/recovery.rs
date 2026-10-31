@@ -140,7 +140,7 @@ impl RecoveryScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(1),
-                Constraint::Length(12),
+                Constraint::Length(16),
                 Constraint::Min(1),
             ])
             .split(frame.area());
@@ -182,6 +182,11 @@ impl RecoveryScreen {
             Line::from(""),
             input_line,
         ];
+        if !matches!(self.step, RecoveryStep::UnsupportedLegacy) {
+            lines.push(Line::from(""));
+            lines.push(Line::from("Recovery disables the old recovery phrase."));
+            lines.push(Line::from("Set up a new phrase in Settings afterward."));
+        }
         if let Some(error) = &self.error {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
@@ -211,7 +216,7 @@ impl RecoveryScreen {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                ": Delete vault & start over",
+                ": Reset vault & start over",
                 Style::default().fg(Color::DarkGray),
             ),
         ]));

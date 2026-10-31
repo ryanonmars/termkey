@@ -7,7 +7,7 @@ description = "CLI encrypted storage manager for cryptocurrency private keys and
 [features]
 default = ["derive-eth", "derive-btc", "derive-sol"]
 derive-eth = ["dep:k256", "dep:sha3"]
-derive-btc = ["dep:bitcoin"]
+derive-btc = ["dep:bitcoin", "dep:k256"]
 derive-sol = ["dep:ed25519-dalek", "dep:bs58"]
 
 [dependencies]
@@ -36,7 +36,7 @@ ratatui = { version = "0.30.2", default-features = false, features = [
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 # Address derivation (feature-gated)
-k256 = { version = "0.13", features = ["ecdsa"], optional = true }
+k256 = { version = "0.14", features = ["ecdsa"], optional = true }
 sha3 = { version = "0.10", optional = true }
 bitcoin = { version = "0.32", optional = true }
 ed25519-dalek = { version = "2", optional = true }
@@ -46,7 +46,6 @@ hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
 fs4 = "1"
-psl2 = "0.1"
 url = "2"
 webbrowser = { version = "1.2", features = ["hardened"] }
 

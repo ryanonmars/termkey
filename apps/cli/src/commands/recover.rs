@@ -14,12 +14,19 @@ pub fn run() -> Result<()> {
         config::RecoveryConfig::V2(recovery) => recovery,
     };
 
+    let bytes = storage::read_encoded_file(&storage::vault_path())?;
+    let header =
+        crate::vault::format::parse_header(&bytes, crate::vault::model::VaultHeader::MAGIC)?;
+    if !recovery.is_valid_for(header.vault_id) {
+        return Err(TermKeyError::RecoveryNotConfigured);
+    }
+
     let phrase = Zeroizing::new(
         rpassword::prompt_password("24-word recovery phrase: ").map_err(TermKeyError::Io)?,
     );
     let dek = crate::crypto::recovery::recover_dek(recovery, recovery.vault_id, &phrase)?;
     let new_password = crate::commands::passwd::prompt_new_password()?;
     VaultSession::recover(dek, recovery.vault_id, new_password, storage::vault_path())?;
-    crate::ui::borders::print_success("Vault recovered. Your recovery phrase remains active.");
+    crate::ui::borders::print_success("Vault recovered with a new encryption key. The previous recovery phrase is no longer active. Configure a new recovery phrase in Settings.");
     Ok(())
 }

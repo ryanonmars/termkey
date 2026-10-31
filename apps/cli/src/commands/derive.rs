@@ -43,7 +43,8 @@ pub fn run(name: &str) -> Result<()> {
             Ok(None) => {
                 println!(
                     "  Address derivation not supported for {} / {}",
-                    entry.secret_type, entry.network
+                    crate::links::sanitize_terminal_text(&entry.secret_type.to_string()),
+                    crate::links::sanitize_terminal_text(&entry.network)
                 );
             }
             Err(e) => {

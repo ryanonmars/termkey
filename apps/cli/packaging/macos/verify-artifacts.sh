@@ -142,7 +142,7 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
   zip_roots+="${path_components[0]}"$'\n'
 done <<< "$zip_entries"
 zip_roots=$(printf '%s' "$zip_roots" | LC_ALL=C sort -u)
-expected_zip_roots=$'termkey\ntermkey-native-host'
+expected_zip_roots='termkey'
 if [[ "$zip_roots" != "$expected_zip_roots" ]]; then
   echo "unexpected ZIP root entries:" >&2
   printf '%s\n' "$zip_roots" >&2
@@ -154,13 +154,12 @@ trap 'rm -rf "$zip_extract_dir"' EXIT
 ditto -x -k "$zip_path" "$zip_extract_dir"
 
 termkey_binary="$zip_extract_dir/termkey"
-native_host_binary="$zip_extract_dir/termkey-native-host"
-if [[ ! -f "$termkey_binary" || ! -f "$native_host_binary" ]]; then
+if [[ ! -f "$termkey_binary" ]]; then
   echo "ZIP extraction did not contain the expected release payload" >&2
   exit 1
 fi
 
-for executable_path in "$termkey_binary" "$native_host_binary"; do
+for executable_path in "$termkey_binary"; do
   verify_macho_target "$executable_path"
   verify_macho_signature "$executable_path" yes
 done

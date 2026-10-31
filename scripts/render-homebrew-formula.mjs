@@ -20,7 +20,6 @@ class Termkey < Formula
 
   def install
     bin.install "termkey"
-    libexec.install "termkey-native-host"
   end
 
   test do

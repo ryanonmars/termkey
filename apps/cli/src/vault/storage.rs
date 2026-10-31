@@ -1,5 +1,5 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use fs4::FileExt;
@@ -8,8 +8,63 @@ use zeroize::Zeroizing;
 
 use crate::crypto::{cipher, kdf};
 use crate::error::{Result, TermKeyError};
-use crate::vault::format::{validate_kdf_params, MAX_CIPHERTEXT_LEN};
+use crate::vault::format::{
+    validate_kdf_params, FORMAT_VERSION_V3, MAX_CIPHERTEXT_LEN, V3_HEADER_LEN,
+};
 use crate::vault::model::{BackupHeader, EntryMeta, VaultData, VaultHeader};
+
+// Legacy metadata can be as large as the encrypted payload, but must never
+// make input allocation unbounded. V3 metadata is inside the ciphertext.
+const MAX_LEGACY_METADATA_LEN: usize = MAX_CIPHERTEXT_LEN;
+
+/// Read an encoded vault/backup without allocating from an untrusted file size.
+/// Header-derived limits are checked before reading the body; `take` also caps
+/// files which grow after the metadata check.
+pub(crate) fn read_encoded_file(path: &Path) -> Result<Vec<u8>> {
+    let mut file = File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(TermKeyError::InvalidVaultFormat);
+    }
+    let mut prefix = [0u8; 12];
+    file.read_exact(&mut prefix[..8])
+        .map_err(|error| match error.kind() {
+            std::io::ErrorKind::UnexpectedEof => TermKeyError::InvalidVaultFormat,
+            _ => TermKeyError::Io(error),
+        })?;
+    if &prefix[..4] != VaultHeader::MAGIC && &prefix[..4] != BackupHeader::MAGIC {
+        return Err(TermKeyError::InvalidVaultFormat);
+    }
+    let version = u32::from_le_bytes(prefix[4..8].try_into().unwrap());
+    let max_encoded_len = match version {
+        VaultHeader::FORMAT_VERSION_V1 => VaultHeader::HEADER_SIZE_V1 + MAX_CIPHERTEXT_LEN,
+        VaultHeader::FORMAT_VERSION_V2 => {
+            file.read_exact(&mut prefix[8..12])
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::UnexpectedEof => TermKeyError::InvalidVaultFormat,
+                    _ => TermKeyError::Io(error),
+                })?;
+            let metadata_len = u32::from_le_bytes(prefix[8..12].try_into().unwrap()) as usize;
+            if metadata_len > MAX_LEGACY_METADATA_LEN {
+                return Err(TermKeyError::VaultTooLarge);
+            }
+            VaultHeader::HEADER_SIZE_V1 + 4 + metadata_len + MAX_CIPHERTEXT_LEN
+        }
+        FORMAT_VERSION_V3 => V3_HEADER_LEN + MAX_CIPHERTEXT_LEN,
+        unsupported => return Err(TermKeyError::UnsupportedVaultVersion(unsupported)),
+    };
+    if metadata.len() > max_encoded_len as u64 {
+        return Err(TermKeyError::VaultTooLarge);
+    }
+    file.seek(SeekFrom::Start(0))?;
+    let mut data = Vec::new();
+    file.take(max_encoded_len as u64 + 1)
+        .read_to_end(&mut data)?;
+    if data.len() > max_encoded_len {
+        return Err(TermKeyError::VaultTooLarge);
+    }
+    Ok(data)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AtomicReplaceFailurePoint {
@@ -256,7 +311,7 @@ impl ParentDirectory {
 
 /// Read entry metadata (names, network, type, notes) without password. Returns empty for v1 vaults.
 pub fn read_metadata(path: &Path) -> Result<Vec<EntryMeta>> {
-    let data = fs::read(path)?;
+    let data = read_encoded_file(path)?;
     if data.len() < 12 {
         return Ok(Vec::new());
     }
@@ -292,7 +347,7 @@ pub fn write_vault(vault: &VaultData, password: &[u8], path: &Path) -> Result<()
     vault.validate()?;
     with_vault_lock(path, || {
         if path.exists() {
-            let current = fs::read(path)?;
+            let current = read_encoded_file(path)?;
             if current.get(4..8)
                 == Some(
                     crate::vault::format::FORMAT_VERSION_V3
@@ -382,7 +437,7 @@ fn write_encrypted_file(
 
 /// Read and decrypt vault from disk.
 pub fn read_vault(password: &[u8], path: &Path) -> Result<VaultData> {
-    let bytes = fs::read(path)?;
+    let bytes = read_encoded_file(path)?;
     if bytes.get(4..8)
         == Some(
             crate::vault::format::FORMAT_VERSION_V3
@@ -397,7 +452,7 @@ pub fn read_vault(password: &[u8], path: &Path) -> Result<VaultData> {
 
 /// Read and decrypt backup from disk.
 pub fn read_backup(password: &[u8], path: &Path) -> Result<VaultData> {
-    let bytes = fs::read(path)?;
+    let bytes = read_encoded_file(path)?;
     if bytes.get(4..8)
         == Some(
             crate::vault::format::FORMAT_VERSION_V3
@@ -415,7 +470,7 @@ fn read_encrypted_file(
     path: &Path,
     expected_magic: &[u8; 4],
 ) -> Result<VaultData> {
-    let data = fs::read(path)?;
+    let data = read_encoded_file(path)?;
     read_legacy_vault(password, &data, expected_magic)
 }
 
@@ -438,6 +493,9 @@ pub(crate) fn read_legacy_vault(
         VaultHeader::FORMAT_VERSION_V2 => {
             let meta_len = usize::try_from(read_u32(data, 8)?)
                 .map_err(|_| TermKeyError::InvalidVaultFormat)?;
+            if meta_len > MAX_LEGACY_METADATA_LEN {
+                return Err(TermKeyError::VaultTooLarge);
+            }
             12usize
                 .checked_add(meta_len)
                 .ok_or(TermKeyError::InvalidVaultFormat)?
@@ -519,7 +577,6 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: "Test note".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -866,6 +923,37 @@ mod tests {
         ));
         assert!(!vault_path.exists());
         assert!(!backup_path.exists());
+    }
+
+    #[test]
+    fn oversized_sparse_backup_is_rejected_before_reading_body() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("oversized.termkey");
+        let mut file = File::create(&path).unwrap();
+        file.write_all(BackupHeader::MAGIC).unwrap();
+        file.write_all(&FORMAT_VERSION_V3.to_le_bytes()).unwrap();
+        file.set_len((V3_HEADER_LEN + MAX_CIPHERTEXT_LEN + 1) as u64)
+            .unwrap();
+        assert!(matches!(
+            read_backup(b"irrelevant", &path),
+            Err(TermKeyError::VaultTooLarge)
+        ));
+    }
+
+    #[test]
+    fn legacy_metadata_size_is_bounded_before_reading_body() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("oversized-legacy.ck");
+        let mut file = File::create(&path).unwrap();
+        file.write_all(VaultHeader::MAGIC).unwrap();
+        file.write_all(&VaultHeader::FORMAT_VERSION_V2.to_le_bytes())
+            .unwrap();
+        file.write_all(&((MAX_LEGACY_METADATA_LEN as u32) + 1).to_le_bytes())
+            .unwrap();
+        assert!(matches!(
+            read_encoded_file(&path),
+            Err(TermKeyError::VaultTooLarge)
+        ));
     }
 
     #[test]

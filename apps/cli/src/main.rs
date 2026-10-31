@@ -38,13 +38,13 @@ fn main() {
             Commands::Passwd => commands::passwd::run(),
             Commands::Recover => commands::recover::run(),
             Commands::Update => commands::update_cmd::run(),
+            Commands::Reset { yes } => commands::reset::run(yes),
             Commands::Uninstall { yes } => commands::uninstall::run(yes),
             Commands::Config {
                 show,
                 ref clipboard_timeout,
             } => commands::config_cmd::run(show, *clipboard_timeout),
             Commands::Derive { ref name } => commands::derive::run(name),
-            Commands::Browser { ref command } => commands::browser::run(command),
         },
     };
 

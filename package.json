@@ -1,26 +1,9 @@
 {
   "name": "termkey",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "test": "vitest --exclude 'scripts/*.test.mjs' --exclude '.worktrees/**'",
-    "test:release-tools": "node --test scripts/release-checksums.test.mjs scripts/release-workflow.test.mjs scripts/render-homebrew-formula.test.mjs scripts/validate-release-version.test.mjs && npm run test:extension-package && bash apps/cli/packaging/macos/release-tools.test.sh",
-    "validate": "npm run build:extension && npm test -- --run && cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo check --workspace --all-targets --no-default-features --locked && cargo test --workspace --all-targets --all-features --locked",
-    "validate:phase1": "rm -f -- dist/termkey-chrome-web-store.zip && npm run validate && npm run test:release-tools && npm run package:extension",
-    "build:core": "node ./node_modules/typescript/bin/tsc --project packages/core/tsconfig.json",
-    "build:types": "node ./node_modules/typescript/bin/tsc --project packages/types/tsconfig.json",
-    "build:extension": "node ./node_modules/typescript/bin/tsc --project packages/core/tsconfig.json && node ./node_modules/typescript/bin/tsc --project packages/types/tsconfig.json && node ./node_modules/typescript/bin/tsc --project apps/extension/tsconfig.json && node apps/extension/scripts/postbuild.mjs",
-    "build:native-host": "cargo build -p termkey --bin termkey-native-host --locked",
-    "package:extension": "npm run build:extension && node scripts/package-extension.mjs apps/extension dist/termkey-chrome-web-store.zip",
-    "test:extension-package": "node --test scripts/package-extension.test.mjs"
-  },
-  "devDependencies": {
-    "@types/chrome": "^0.2.2",
-    "jsdom": "^26.1.0",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "test": "npm run test:release-tools",
+    "test:release-tools": "node --test scripts/*.test.mjs && bash apps/cli/packaging/macos/release-tools.test.sh",
+    "validate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo check --workspace --all-targets --no-default-features --locked && cargo test --workspace --all-targets --all-features --locked && npm test"
   }
 }

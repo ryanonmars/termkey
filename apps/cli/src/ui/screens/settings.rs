@@ -13,11 +13,13 @@ use crate::config::model::Config;
 enum SettingsField {
     ClipboardTimeout,
     RecoveryStatus,
+    ResetVault,
 }
 
-const FIELDS: [SettingsField; 2] = [
+const FIELDS: [SettingsField; 3] = [
     SettingsField::ClipboardTimeout,
     SettingsField::RecoveryStatus,
+    SettingsField::ResetVault,
 ];
 
 pub enum SettingsAction {
@@ -25,6 +27,7 @@ pub enum SettingsAction {
     SaveClipboardTimeout(u64),
     Cancel,
     SetupRecovery,
+    ResetVault,
 }
 
 pub struct SettingsScreen {
@@ -75,6 +78,7 @@ impl SettingsScreen {
                     SettingsField::RecoveryStatus => {
                         return SettingsAction::SetupRecovery;
                     }
+                    SettingsField::ResetVault => return SettingsAction::ResetVault,
                 }
                 SettingsAction::Continue
             }
@@ -124,7 +128,7 @@ impl SettingsScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(1),
-                Constraint::Length(14),
+                Constraint::Length(16),
                 Constraint::Min(1),
             ])
             .split(area);
@@ -192,6 +196,20 @@ impl SettingsScreen {
 
         lines.push(Line::from(""));
 
+        let reset_style = if self.selected == 2 {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Red)
+        };
+        lines.push(Line::from(Span::styled(
+            "  Reset vault and settings...",
+            reset_style,
+        )));
+        lines.push(Line::from(""));
+
         // Vault path (display only)
         lines.push(Line::from(vec![
             Span::styled("  Vault path: ", Style::default().fg(Color::DarkGray)),
@@ -231,6 +249,17 @@ mod tests {
     use crate::config::model::{Config, RecoveryConfig, RecoveryConfigV2};
     use crate::vault::format::VaultId;
     use crossterm::event::{KeyCode, KeyModifiers};
+
+    #[test]
+    fn reset_option_requires_explicit_selection() {
+        let mut settings = SettingsScreen::new(Config::default());
+        settings.handle_key(KeyCode::Down, KeyModifiers::NONE);
+        settings.handle_key(KeyCode::Down, KeyModifiers::NONE);
+        assert!(matches!(
+            settings.handle_key(KeyCode::Enter, KeyModifiers::NONE),
+            SettingsAction::ResetVault
+        ));
+    }
 
     #[test]
     fn closing_stale_settings_emits_only_the_intended_clipboard_field() {

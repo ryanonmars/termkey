@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 
 use rand::RngCore;
@@ -8,7 +7,9 @@ use zeroize::Zeroizing;
 use crate::error::{Result, TermKeyError};
 use crate::vault::format::{decode_v3, decode_v3_with_dek, encode_v3, VaultId, FORMAT_VERSION_V3};
 use crate::vault::model::{VaultData, VaultHeader};
-use crate::vault::storage::{atomic_replace, read_legacy_vault, with_vault_lock};
+use crate::vault::storage::{
+    atomic_replace, read_encoded_file, read_legacy_vault, with_vault_lock,
+};
 
 pub struct VaultSession {
     pub vault: VaultData,
@@ -42,7 +43,10 @@ impl VaultSession {
         let outcome = Self::open(password, crate::vault::storage::vault_path())?;
         if let Some(notice) = outcome.recovery_notice.as_deref() {
             eprintln!();
-            eprintln!("Recovery notice: {notice}");
+            eprintln!(
+                "Recovery notice: {}",
+                crate::links::sanitize_terminal_text(notice)
+            );
         }
         Ok(outcome)
     }
@@ -72,7 +76,7 @@ impl VaultSession {
     pub fn open(password: Zeroizing<String>, path: PathBuf) -> Result<OpenOutcome> {
         let lock_path = path.clone();
         let outcome = with_vault_lock(&lock_path, || {
-            let bytes = fs::read(&path)?;
+            let bytes = read_encoded_file(&path)?;
             let version = vault_version(&bytes)?;
 
             if version == FORMAT_VERSION_V3 {
@@ -151,9 +155,12 @@ impl VaultSession {
         password: Zeroizing<String>,
         path: PathBuf,
     ) -> Result<Self> {
+        if password.is_empty() {
+            return Err(TermKeyError::EmptyPassword);
+        }
         let lock_path = path.clone();
         with_vault_lock(&lock_path, || {
-            let bytes = fs::read(&path)?;
+            let bytes = read_encoded_file(&path)?;
             if vault_version(&bytes)? != FORMAT_VERSION_V3 {
                 return Err(TermKeyError::RecoveryFailed(
                     "Recovery requires a migrated vault".into(),
@@ -169,12 +176,13 @@ impl VaultSession {
                 .revision
                 .checked_add(1)
                 .ok_or(TermKeyError::VaultConflict)?;
+            let (new_dek, new_vault_id) = fresh_identity();
             let encoded = encode_v3(
                 &vault,
                 password.as_bytes(),
                 VaultHeader::MAGIC,
-                Some(&dek),
-                Some(vault_id),
+                Some(&new_dek),
+                Some(new_vault_id),
             )?;
             atomic_replace(&path, &encoded)?;
             Ok(Self {
@@ -182,8 +190,8 @@ impl VaultSession {
                 source_digest: digest(&encoded),
                 path,
                 vault,
-                vault_id,
-                dek,
+                vault_id: new_vault_id,
+                dek: new_dek,
                 master_password: password,
                 write_credentials_fresh: true,
             })
@@ -221,6 +229,9 @@ impl VaultSession {
     }
 
     pub fn change_master_password(&mut self, password: Zeroizing<String>) -> Result<()> {
+        if password.is_empty() {
+            return Err(TermKeyError::EmptyPassword);
+        }
         if !self.write_credentials_fresh {
             return Err(TermKeyError::VaultConflict);
         }
@@ -231,14 +242,15 @@ impl VaultSession {
         let mut next_vault = self.vault.clone();
         next_vault.revision = next_revision;
 
+        let (new_dek, new_vault_id) = fresh_identity();
         let encoded = with_vault_lock(&self.path, || {
             self.verify_current_state()?;
             let encoded = encode_v3(
                 &next_vault,
                 password.as_bytes(),
                 VaultHeader::MAGIC,
-                Some(&self.dek),
-                Some(self.vault_id),
+                Some(&new_dek),
+                Some(new_vault_id),
             )?;
             atomic_replace(&self.path, &encoded)?;
             Ok(encoded)
@@ -248,12 +260,17 @@ impl VaultSession {
         self.expected_revision = next_revision;
         self.source_digest = digest(&encoded);
         self.master_password = password;
+        self.dek = new_dek;
+        self.vault_id = new_vault_id;
         Ok(())
     }
 
     pub fn reload(&mut self) -> Result<()> {
         let (vault, source_digest) = with_vault_lock(&self.path, || {
-            let bytes = fs::read(&self.path)?;
+            let bytes = read_encoded_file(&self.path).map_err(|error| match error {
+                TermKeyError::Io(error) => TermKeyError::Io(error),
+                _ => TermKeyError::VaultConflict,
+            })?;
             let source_digest = digest(&bytes);
             let (vault, vault_id) = decode_v3_with_dek(&self.dek, &bytes, VaultHeader::MAGIC)
                 .map_err(|_| TermKeyError::VaultConflict)?;
@@ -284,7 +301,10 @@ impl VaultSession {
     }
 
     fn verify_current_state(&self) -> Result<()> {
-        let bytes = fs::read(&self.path)?;
+        let bytes = read_encoded_file(&self.path).map_err(|error| match error {
+            TermKeyError::Io(error) => TermKeyError::Io(error),
+            _ => TermKeyError::VaultConflict,
+        })?;
         let current_digest = digest(&bytes);
         let decoded = decode_v3_with_dek(&self.dek, &bytes, VaultHeader::MAGIC);
         let (current_vault, current_vault_id) = match decoded {
@@ -303,6 +323,17 @@ impl VaultSession {
         }
         Ok(())
     }
+}
+
+/// A new identity invalidates recovery records for the previous encryption key.
+/// This keeps password/key rotation atomic in the vault file, without a second
+/// config write whose failure could leave a misleading active recovery record.
+fn fresh_identity() -> (Zeroizing<[u8; 32]>, VaultId) {
+    let mut dek = Zeroizing::new([0u8; 32]);
+    rand::thread_rng().fill_bytes(dek.as_mut());
+    let mut id = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut id);
+    (dek, VaultId(id))
 }
 
 fn clear_legacy_recovery_after_migration(
@@ -376,7 +407,6 @@ mod tests {
             public_address: None,
             username: Some("migrated-user".to_string()),
             url: Some("https://migration.example".to_string()),
-            site_rules: Vec::new(),
             notes: "legacy notes".to_string(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -403,7 +433,6 @@ mod tests {
             public_address: None,
             username: None,
             url: None,
-            site_rules: Vec::new(),
             notes: String::new(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -697,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_after_external_password_change_makes_session_read_only() {
+    fn reload_after_external_password_change_rejects_revoked_session() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
         legacy_vault(&path, b"old-password");
@@ -710,7 +739,7 @@ mod tests {
         independent
             .change_master_password(password("new-password"))
             .unwrap();
-        session.reload().unwrap();
+        assert!(matches!(session.reload(), Err(TermKeyError::VaultConflict)));
         session.vault.entries[0].notes = "must not persist".into();
         let rotated_file = fs::read(&path).unwrap();
 
@@ -775,33 +804,45 @@ mod tests {
     }
 
     #[test]
-    fn change_master_password_rewraps_existing_vault() {
+    fn password_change_revokes_old_snapshot_key_for_future_secrets() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
         legacy_vault(&path, b"old-password");
         let mut session = VaultSession::open(password("old-password"), path.clone())
             .unwrap()
             .session;
-        let vault_id = session.vault_id();
-        let dek = *session.dek();
+        let old_snapshot = fs::read(&path).unwrap();
+        let stolen = decode_v3(b"old-password", &old_snapshot, VaultHeader::MAGIC).unwrap();
+        let original_revision = session.vault.revision;
 
         session
             .change_master_password(password("new-password"))
             .unwrap();
+        session.vault.entries[0].secret = "secret added after rotation".into();
+        session.save().unwrap();
+        let current = fs::read(&path).unwrap();
 
-        assert!(matches!(
-            VaultSession::open(password("old-password"), path.clone()),
-            Err(TermKeyError::DecryptionFailed)
-        ));
+        assert!(decode_v3(b"old-password", &current, VaultHeader::MAGIC).is_err());
+        assert!(crate::vault::format::decode_v3_with_dek(
+            &stolen.dek,
+            &current,
+            VaultHeader::MAGIC
+        )
+        .is_err());
         let reopened = VaultSession::open(password("new-password"), path)
             .unwrap()
             .session;
-        assert_eq!(reopened.vault_id(), vault_id);
-        assert_eq!(reopened.dek(), &dek);
+        assert_ne!(reopened.vault_id(), stolen.vault_id);
+        assert_ne!(reopened.dek(), &*stolen.dek);
+        assert_eq!(
+            reopened.vault.entries[0].secret,
+            "secret added after rotation"
+        );
+        assert_eq!(reopened.vault.revision, original_revision + 2);
     }
 
     #[test]
-    fn password_change_preserves_recovery_dek() {
+    fn password_change_invalidates_old_recovery_and_accepts_new_setup() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
         legacy_vault(&path, b"old-password");
@@ -810,56 +851,106 @@ mod tests {
             .session;
         let phrase = generate_recovery_phrase().unwrap();
         let recovery = create_recovery_config(session.vault_id(), session.dek(), &phrase).unwrap();
+        let config = Config {
+            recovery: Some(RecoveryConfig::V2(recovery.clone())),
+            ..Config::default()
+        };
 
         session
             .change_master_password(password("new-password"))
             .unwrap();
 
-        let recovered = recover_dek(&recovery, session.vault_id(), &phrase).unwrap();
-        let reopened = VaultSession::open(password("new-password"), path)
-            .unwrap()
-            .session;
-        assert_eq!(&*recovered, reopened.dek());
+        assert!(!config.has_active_recovery_for(session.vault_id()));
+        assert!(recover_dek(&recovery, session.vault_id(), &phrase).is_err());
+        let replacement_phrase = generate_recovery_phrase().unwrap();
+        let replacement =
+            create_recovery_config(session.vault_id(), session.dek(), &replacement_phrase).unwrap();
+        let recovered_key =
+            recover_dek(&replacement, session.vault_id(), &replacement_phrase).unwrap();
+        assert_eq!(&*recovered_key, session.dek());
     }
 
     #[test]
-    fn recover_then_change_password_can_recover_again() {
+    fn recovery_reset_rotates_key_and_allows_fresh_recovery_setup() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vault.ck");
         legacy_vault(&path, b"original-password");
         let original = VaultSession::open(password("original-password"), path.clone())
             .unwrap()
             .session;
-        let original_revision = original.vault.revision;
         let phrase = generate_recovery_phrase().unwrap();
         let recovery =
             create_recovery_config(original.vault_id(), original.dek(), &phrase).unwrap();
         let recovered_dek = recover_dek(&recovery, original.vault_id(), &phrase).unwrap();
 
-        let mut recovered = VaultSession::recover(
+        let recovered = VaultSession::recover(
             recovered_dek,
             original.vault_id(),
             password("recovered-password"),
             path.clone(),
         )
         .unwrap();
-        assert_eq!(recovered.vault.revision, original_revision + 1);
-        recovered
-            .change_master_password(password("rotated-password"))
-            .unwrap();
-        assert_eq!(recovered.vault.revision, original_revision + 2);
+        let current = fs::read(&path).unwrap();
+        assert!(crate::vault::format::decode_v3_with_dek(
+            original.dek(),
+            &current,
+            VaultHeader::MAGIC
+        )
+        .is_err());
+        assert_ne!(recovered.vault_id(), original.vault_id());
+        assert_ne!(recovered.dek(), original.dek());
+        assert_eq!(recovered.vault.revision, original.vault.revision + 1);
+        assert_eq!(
+            recovered.vault.entries[0].secret,
+            original.vault.entries[0].secret
+        );
+        assert!(recover_dek(&recovery, recovered.vault_id(), &phrase).is_err());
 
-        let recovered_again = recover_dek(&recovery, recovered.vault_id(), &phrase).unwrap();
+        let replacement_phrase = generate_recovery_phrase().unwrap();
+        let replacement =
+            create_recovery_config(recovered.vault_id(), recovered.dek(), &replacement_phrase)
+                .unwrap();
+        let replacement_dek =
+            recover_dek(&replacement, recovered.vault_id(), &replacement_phrase).unwrap();
         let reopened = VaultSession::recover(
-            recovered_again,
+            replacement_dek,
             recovered.vault_id(),
             password("second-recovery-password"),
             path,
         )
         .unwrap();
-        assert_eq!(reopened.vault.revision, original_revision + 3);
-        assert_eq!(reopened.vault_id(), original.vault_id());
-        assert_eq!(reopened.dek(), original.dek());
+        assert_eq!(reopened.vault.revision, original.vault.revision + 2);
+        assert_ne!(reopened.dek(), recovered.dek());
+    }
+
+    #[test]
+    fn failed_password_rotation_preserves_disk_key_and_session() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("vault.ck");
+        legacy_vault(&path, b"old-password");
+        let mut session = VaultSession::open(password("old-password"), path.clone())
+            .unwrap()
+            .session;
+        let original_bytes = fs::read(&path).unwrap();
+        let original_dek = Zeroizing::new(*session.dek());
+        let original_id = session.vault_id();
+        let original_revision = session.vault.revision;
+        for failure in [
+            crate::vault::storage::AtomicReplaceFailurePoint::Write,
+            crate::vault::storage::AtomicReplaceFailurePoint::TempSync,
+            crate::vault::storage::AtomicReplaceFailurePoint::Rename,
+        ] {
+            crate::vault::storage::fail_next_atomic_replace_at(failure);
+            assert!(session
+                .change_master_password(password("new-password"))
+                .is_err());
+            assert_eq!(fs::read(&path).unwrap(), original_bytes);
+            assert_eq!(session.dek(), &*original_dek);
+            assert_eq!(session.vault_id(), original_id);
+            assert_eq!(session.vault.revision, original_revision);
+            assert_eq!(session.master_password.as_str(), "old-password");
+        }
+        session.save().unwrap();
     }
 
     #[test]

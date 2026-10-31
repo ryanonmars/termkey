@@ -39,7 +39,7 @@ const V3_WRAP_NONCE_OFFSET: usize = V3_P_COST_OFFSET + KDF_PARAM_LEN;
 const V3_WRAPPED_DEK_OFFSET: usize = V3_WRAP_NONCE_OFFSET + NONCE_LEN;
 const V3_PAYLOAD_NONCE_OFFSET: usize = V3_WRAPPED_DEK_OFFSET + WRAPPED_DEK_LEN;
 const V3_CIPHERTEXT_LEN_OFFSET: usize = V3_PAYLOAD_NONCE_OFFSET + NONCE_LEN;
-const V3_HEADER_LEN: usize = V3_CIPHERTEXT_LEN_OFFSET + CIPHERTEXT_LEN_FIELD_LEN;
+pub(crate) const V3_HEADER_LEN: usize = V3_CIPHERTEXT_LEN_OFFSET + CIPHERTEXT_LEN_FIELD_LEN;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VaultId(pub [u8; VAULT_ID_LEN]);
@@ -395,7 +395,6 @@ mod tests {
             public_address: None,
             username: Some("encrypted-user".to_string()),
             url: Some("https://encrypted.example".to_string()),
-            site_rules: Vec::new(),
             notes: "encrypted notes".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

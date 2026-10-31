@@ -27,7 +27,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
     if let Some(url) = entry.url.as_deref().filter(|url| links::is_web_url(url)) {
         loop {
             let options = &["Reveal secret", "Open URL", "Done"];
-            let choice = Select::new()
+            let choice = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt("What would you like to do?")
                 .items(options)
                 .default(0)
@@ -44,7 +44,7 @@ pub fn run_with_vault(vault: &VaultData, name: &str) -> Result<()> {
             }
         }
     } else {
-        let reveal = Confirm::new()
+        let reveal = Confirm::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("Reveal secret?")
             .default(false)
             .interact()
@@ -133,7 +133,7 @@ fn reveal_secret(entry: &Entry) -> Result<()> {
     println!();
 
     let options = &["Clear screen and continue", "Keep visible"];
-    let clear_choice = Select::new()
+    let clear_choice = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("What would you like to do?")
         .items(options)
         .default(0)
@@ -197,7 +197,6 @@ mod tests {
             public_address: Some("pub\u{0007}lic".to_string()),
             username: Some("us\u{0085}er".to_string()),
             url: Some("https://example.com/a\u{0007}b".to_string()),
-            site_rules: Vec::new(),
             notes: "no\u{0000}tes".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),

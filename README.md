@@ -41,28 +41,6 @@ Run `termkey` to open the vault. `termkey update` checks the latest TermKey rele
 
 ---
 
-## Chrome Extension Setup
-
-Install the [TermKey Extension from the Chrome Web Store](https://chromewebstore.google.com/detail/dancadidkgcdlfdlfpbmmiokkeedpini), then connect it to the local TermKey vault:
-
-1. Run `termkey browser install`.
-2. Install or enable the extension from the Store page that opens.
-3. Open the extension and choose **Try Again**.
-
-Useful commands:
-
-```bash
-termkey browser install
-termkey browser status
-termkey browser repair
-```
-
-`termkey browser install` registers the local native-messaging host and opens the Chrome Web Store listing. `termkey browser status` reports the native-host path, protocol compatibility, expected Store extension ID, and Store link. `termkey browser repair` rewrites stale native-host registration without changing Chrome's extension installation state.
-
-Read the [Privacy Policy](https://github.com/ryanonmars/termkey/blob/master/PRIVACY.md) before enabling autofill or save prompts.
-
----
-
 ## How It Works
 
 Run `termkey` with no subcommand to open the TUI.
@@ -80,6 +58,10 @@ upgraded from the legacy format no longer use security-question recovery; after
 the first successful upgrade, follow the unlock notice and configure a new
 recovery phrase in Settings.
 
+Changing the master password or recovering the vault rotates its encryption key
+and disables the previous recovery phrase. Set up a new recovery phrase in Settings
+after either operation.
+
 Inside the TUI you can:
 
 - Add private keys, seed phrases, or passwords
@@ -90,6 +72,7 @@ Inside the TUI you can:
 - Export an encrypted backup and import it later
 - Change your master password
 - Open settings and recovery flows
+- Reset the vault from Settings → Reset vault and settings (type `DELETE` to confirm)
 
 For crypto entries, TermKey supports Ethereum, Bitcoin, Solana, and custom network labels. Public address derivation is available for supported Ethereum, Bitcoin, and Solana private keys and seed phrases.
 
@@ -119,9 +102,8 @@ termkey recover
 termkey config --show
 termkey update
 termkey derive <name-or-index>
-termkey browser install
-termkey browser status
-termkey browser repair
+termkey reset
+termkey uninstall
 ```
 
 Notes:
@@ -129,6 +111,8 @@ Notes:
 - `termkey export <directory>` prompts for an editable backup name (default: `backup`) and writes an encrypted `<name>.termkey` file into that directory.
 - Imports remain compatible with existing `.ck` backup files.
 - `termkey recover` uses your configured 24-word recovery phrase.
+- `termkey reset` deletes vault data and settings after confirmation, preserves encrypted backups, and keeps TermKey installed. Run `termkey` afterward to set up a new vault.
+- `termkey uninstall` removes TermKey while preserving vault data and settings. Homebrew installs use `brew uninstall termkey`; macOS installer installs launch the companion uninstaller. The confirmation and completion messages show the retained vault location and a standalone cleanup command that works after TermKey is gone. To delete vault data first, run `termkey reset` before uninstalling.
 - `termkey update` checks the latest GitHub release. On Homebrew installs it runs the Homebrew update flow; on installer/manual/source installs it prints the correct release download page.
 - `termkey derive` saves a public address for supported Ethereum, Bitcoin, and Solana key or seed entries.
 

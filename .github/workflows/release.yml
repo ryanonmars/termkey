@@ -66,10 +66,7 @@ jobs:
         run: npm ci
 
       - name: Validate
-        run: npm run validate:phase1
-
-      - name: Audit JavaScript dependencies
-        run: npm audit
+        run: npm run validate
 
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit --version 0.22.2
@@ -266,7 +263,7 @@ jobs:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
         run: |
           release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          for executable in "$release_dir/termkey" "$release_dir/termkey-native-host"; do
+          for executable in "$release_dir/termkey"; do
             codesign --force --options runtime --timestamp \
               --sign "$APPLE_APPLICATION_SIGNING_IDENTITY" \
               "$executable"
@@ -283,8 +280,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
         run: |
           release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          TERMKEY_NATIVE_HOST_BINARY="$release_dir/termkey-native-host" \
-            apps/cli/packaging/macos/create-pkg.sh \
+          apps/cli/packaging/macos/create-pkg.sh \
             "$release_dir/termkey" \
             "$RELEASE_VERSION" \
             "termkey-macos-aarch64-installer" \
@@ -298,8 +294,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
         run: |
           release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          TERMKEY_NATIVE_HOST_BINARY="$release_dir/termkey-native-host" \
-            apps/cli/packaging/macos/create-pkg.sh \
+          apps/cli/packaging/macos/create-pkg.sh \
             "$release_dir/termkey" \
             "$RELEASE_VERSION" \
             "termkey-macos-aarch64-installer" \
@@ -365,7 +360,6 @@ jobs:
           zip_path="$GITHUB_WORKSPACE/termkey-macos-aarch64.zip"
           mkdir -p "$staging_dir"
           ditto --norsrc "$release_dir/termkey" "$staging_dir/termkey"
-          ditto --norsrc "$release_dir/termkey-native-host" "$staging_dir/termkey-native-host"
 
           ditto -c -k --norsrc "$staging_dir" "$zip_path"
 
@@ -398,7 +392,7 @@ jobs:
         shell: bash
         run: |
           release_dir="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release"
-          for executable in "$release_dir/termkey" "$release_dir/termkey-native-host"; do
+          for executable in "$release_dir/termkey"; do
             test "$(lipo -archs "$executable")" = "arm64"
             minos=$(otool -l "$executable" | awk '
               $1 == "cmd" && $2 == "LC_BUILD_VERSION" { command = "build"; next }
@@ -412,7 +406,7 @@ jobs:
           zip_roots=$(unzip -Z1 "$GITHUB_WORKSPACE/termkey-macos-aarch64.zip" \
             | awk -F/ 'NF && $1 != "" { print $1 }' \
             | LC_ALL=C sort -u)
-          expected_zip_roots=$'termkey\ntermkey-native-host'
+          expected_zip_roots='termkey'
           test "$zip_roots" = "$expected_zip_roots"
           pkgutil --payload-files "$GITHUB_WORKSPACE/termkey-macos-aarch64-installer.pkg" \
             | grep -Fqx './usr/local/bin/termkey'

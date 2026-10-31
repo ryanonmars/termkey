@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 pub struct InputScreen {
     title: String,
     prompt: String,
+    notice: Option<String>,
     value: Zeroizing<String>,
     is_password: bool,
 }
@@ -25,9 +26,15 @@ impl InputScreen {
         Self {
             title: title.to_string(),
             prompt: prompt.to_string(),
+            notice: None,
             value: Zeroizing::new(value.to_string()),
             is_password,
         }
+    }
+
+    pub fn with_notice(mut self, notice: &str) -> Self {
+        self.notice = Some(notice.to_string());
+        self
     }
 
     pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Option<InputResult> {
@@ -59,7 +66,12 @@ impl InputScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(1),
-                Constraint::Length(7),
+                Constraint::Length(
+                    7 + self
+                        .notice
+                        .as_ref()
+                        .map_or(0, |notice| notice.lines().count() as u16 + 1),
+                ),
                 Constraint::Min(1),
             ])
             .split(area);
@@ -80,7 +92,12 @@ impl InputScreen {
             Cow::Borrowed(self.value.as_str())
         };
 
-        let text = vec![
+        let mut text = Vec::new();
+        if let Some(notice) = &self.notice {
+            text.extend(notice.lines().map(Line::from));
+            text.push(Line::from(""));
+        }
+        text.extend([
             Line::from(self.prompt.as_str()),
             Line::from(""),
             Line::from(vec![
@@ -92,7 +109,7 @@ impl InputScreen {
                 "Enter: Submit │ Esc: Cancel",
                 Style::default().fg(Color::DarkGray),
             )]),
-        ];
+        ]);
 
         let paragraph = Paragraph::new(text).block(block);
 

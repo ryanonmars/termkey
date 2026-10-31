@@ -3,25 +3,15 @@
 set -euo pipefail
 
 binary_path="/usr/local/bin/termkey"
-native_host_binary_path="/usr/local/bin/termkey-native-host"
 app_path="/Applications/TermKey.app"
 app_binary_path="$app_path/Contents/Resources/bin/termkey"
-app_native_host_binary_path="$app_path/Contents/Resources/bin/termkey-native-host"
 
 if [[ -f "$binary_path" ]]; then
   chmod 755 "$binary_path"
 fi
 
-if [[ -f "$native_host_binary_path" ]]; then
-  chmod 755 "$native_host_binary_path"
-fi
-
 if [[ -f "$app_binary_path" ]]; then
   chmod 755 "$app_binary_path"
-fi
-
-if [[ -f "$app_native_host_binary_path" ]]; then
-  chmod 755 "$app_native_host_binary_path"
 fi
 
 exit 0

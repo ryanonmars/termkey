@@ -25,7 +25,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     println!();
 
     // Name
-    let name: String = Input::new()
+    let name: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Entry name (e.g. \"MetaMask Main\")")
         .interact_text()
         .map_err(|e| TermKeyError::Io(std::io::Error::other(e)))?;
@@ -41,7 +41,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
 
     // Secret type
     let type_options = &["Private Key", "Seed Phrase", "Password", "Other", "Exit"];
-    let type_idx = Select::new()
+    let type_idx = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Secret type")
         .items(type_options)
         .default(0)
@@ -57,7 +57,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         1 => SecretType::SeedPhrase,
         2 => SecretType::Password,
         _ => {
-            let custom_type: String = Input::new()
+            let custom_type: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt("Custom secret type")
                 .interact_text()
                 .map_err(|e| TermKeyError::Io(std::io::Error::other(e)))?;
@@ -78,14 +78,14 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     // Network & address (skip for Password type)
     let (network, public_address, username, url) = if secret_type.is_password_type() {
         // Password: prompt for optional username and URL
-        let uname: String = Input::new()
+        let uname: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("Username (optional, press Enter to skip)")
             .default(String::new())
             .interact_text()
             .map_err(|e| TermKeyError::Io(std::io::Error::other(e)))?;
         let uname = uname.trim().to_string();
 
-        let url_input: String = Input::new()
+        let url_input: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("URL (optional, press Enter to skip)")
             .default(String::new())
             .interact_text()
@@ -105,7 +105,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     } else if secret_type.is_crypto_type() {
         // PrivateKey / SeedPhrase: network + optional address
         let network_options = &["Ethereum", "Bitcoin", "Solana", "Other", "Exit"];
-        let net_idx = Select::new()
+        let net_idx = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("Network")
             .items(network_options)
             .default(0)
@@ -117,7 +117,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         }
 
         let network = if net_idx == 3 {
-            let custom: String = Input::new()
+            let custom: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
                 .with_prompt("Enter network name")
                 .interact_text()
                 .map_err(|e| TermKeyError::Io(std::io::Error::other(e)))?;
@@ -128,7 +128,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
 
         let public_address = match secret_type {
             SecretType::PrivateKey => {
-                let addr: String = Input::new()
+                let addr: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
                     .with_prompt("Public address (optional, press Enter to skip)")
                     .default(String::new())
                     .interact_text()
@@ -149,7 +149,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
     };
 
     // Notes (optional)
-    let notes: String = Input::new()
+    let notes: String = Input::with_theme(&crate::ui::prompt::SAFE_THEME)
         .with_prompt("Notes (optional, press Enter to skip)")
         .default(String::new())
         .interact_text()
@@ -164,7 +164,6 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
         public_address,
         username,
         url,
-        site_rules: Vec::new(),
         notes: notes.trim().to_string(),
         created_at: now,
         updated_at: now,
@@ -186,7 +185,7 @@ pub fn run_with_vault(vault: &mut VaultData) -> Result<()> {
 fn prompt_secret(secret_type: &SecretType) -> Result<(Zeroizing<String>, Zeroizing<String>)> {
     if secret_type.is_password_type() {
         let method_options = &["Enter manually", "Generate strong password", "Exit"];
-        let method_idx = Select::new()
+        let method_idx = Select::with_theme(&crate::ui::prompt::SAFE_THEME)
             .with_prompt("Password input")
             .items(method_options)
             .default(1)
@@ -206,7 +205,7 @@ fn prompt_secret(secret_type: &SecretType) -> Result<(Zeroizing<String>, Zeroizi
                     ],
                 );
 
-                let use_generated = Confirm::new()
+                let use_generated = Confirm::with_theme(&crate::ui::prompt::SAFE_THEME)
                     .with_prompt("Use this generated password?")
                     .default(true)
                     .interact()

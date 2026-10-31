@@ -9,7 +9,10 @@ pub fn run(show: bool, clipboard_timeout: Option<u64>) -> Result<()> {
         println!();
         println!("  TermKey Configuration");
         println!("  ─────────────────────────");
-        println!("  Vault path:         {}", cfg.vault_path);
+        println!(
+            "  Vault path:         {}",
+            crate::links::sanitize_terminal_text(&cfg.vault_path)
+        );
         println!(
             "  Clipboard timeout:  {} seconds",
             cfg.clipboard_timeout_secs
