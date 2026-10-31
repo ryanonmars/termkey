@@ -40,3 +40,21 @@ same release and compare the archive's SHA-256 before extracting. Each ZIP
 contains termkey, LICENSE, THIRD-PARTY-LICENSES.txt, and README.txt. Production Mac binaries are Developer
 ID signed and notarized; keep Gatekeeper enabled. ZIP extraction may require
 chmod 755 termkey before running a manually installed copy.
+Launch the ZIP executable from Terminal, not by double-clicking it in Finder.
+ZIPs and standalone tools cannot carry stapled notarization tickets; first
+launch may require internet access to retrieve Apple's approval. Keep Gatekeeper
+enabled and do not remove quarantine to bypass a failed check. This production
+DMG and its PKG carry stapled tickets.
+
+Upgrades and vaults
+------------------
+
+Close TermKey before upgrading. The installer replaces application files only;
+it does not reset ~/.termkey or migrate the encrypted vault. Homebrew users should
+use brew upgrade termkey. Manual ZIP users replace only the executable and retain
+the included license/notices. Use command -v termkey to identify which installed
+copy your shell launches when multiple installation methods coexist.
+
+Move encrypted backups with termkey export and termkey import. Use a fresh private
+destination vault or preserve an independent backup of an existing destination
+before importing. Never overwrite an existing vault.ck during manual migration.

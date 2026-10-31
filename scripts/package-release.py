@@ -247,8 +247,11 @@ Homebrew on supported macOS/Linux hosts can use the same release executable:
 """
         if info["os"] == "macos":
             install += """macOS deployment target: 11.0. Production binaries must be Developer ID signed
-and notarized. Keep Gatekeeper enabled; verify downloaded artifacts on a clean
-Mac. The Apple Silicon DMG remains available as an alternative installer.
+and notarized. Launch the executable from Terminal, not by double-clicking it
+in Finder. Keep Gatekeeper enabled; verify downloaded artifacts on a clean Mac.
+ZIPs and standalone tools cannot carry stapled tickets; first launch may need
+internet access to retrieve notarization approval. Do not remove quarantine to
+bypass failed checks. The Apple Silicon DMG/PKG carries stapled tickets.
 Your vault and configuration remain in ~/.termkey.
 """
         else:
@@ -279,7 +282,8 @@ termkey import <file> using its backup password. Do not rename it to vault.ck.
 Secondary passwords remain required for their protected entries.
 Raw vault.ck files can be copied while all TermKey instances are closed; preserve
 matching recovery config and fix local absolute paths when changing operating
-systems. Reapply private destination permissions. Backup import is simpler for
+systems. Copy into a fresh private directory; never overwrite an existing vault.
+Reapply private destination permissions. Backup import is simpler for
 a new installation; set up its local recovery phrase afterward.
 Changing the master password or recovering a vault rotates the encryption key
 and invalidates the old recovery phrase. Set up a new phrase in Settings.

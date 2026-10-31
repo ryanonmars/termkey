@@ -26,17 +26,19 @@ Local-only, encrypted vault for private keys, seed phrases, and passwords. Run `
 ## Platforms and release status
 
 The existing supported release is **macOS Apple Silicon, macOS 11 or later**.
-This branch prepares the following release targets. New platforms are release
-candidates until their native CI, security tests, and clean-machine checks pass;
-a successful cross-compilation alone does not establish runtime support.
+All five targets passed [native CI validation](https://github.com/ryanonmars/termkey/actions/runs/41230994032),
+including security tests, all 25 encrypted-vault exchange combinations, and ZIP
+integrity/architecture checks. Publication still requires protected macOS signing
+validation and final downloaded-package checks. These ZIPs are release candidates
+until that verification is complete.
 
 | Platform | Rust target | Release ZIP | Verification required before release |
 |---|---|---|---|
-| macOS Apple Silicon | `aarch64-apple-darwin` | `termkey-macos-aarch64.zip` | Native tests; signed/notarized download and installer checks |
-| macOS Intel | `x86_64-apple-darwin` | `termkey-macos-x64.zip` | Native Intel tests; signed/notarized ZIP; macOS 11 minimum |
-| Linux x86_64 | `x86_64-unknown-linux-musl` | `termkey-linux-x64.zip` | Native MUSL tests; static linkage; clean Linux and clipboard checks |
-| Linux ARM64 | `aarch64-unknown-linux-musl` | `termkey-linux-arm64.zip` | Native ARM64 MUSL tests; static linkage; clean Linux and clipboard checks |
-| Windows x86_64 | `x86_64-pc-windows-msvc` | `termkey-windows-x64.zip` | Native Windows security tests; Windows Terminal/PowerShell; standard-user checks |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `termkey-macos-aarch64.zip` | Signed/notarized downloaded ZIP and installer; macOS 11 minimum |
+| macOS Intel | `x86_64-apple-darwin` | `termkey-macos-x64.zip` | Signed/notarized downloaded ZIP; macOS 11 minimum |
+| Linux x86_64 | `x86_64-unknown-linux-musl` | `termkey-linux-x64.zip` | Final downloaded package on a clean host |
+| Linux ARM64 | `aarch64-unknown-linux-musl` | `termkey-linux-arm64.zip` | Final downloaded package on a clean host |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `termkey-windows-x64.zip` | Standard-user Windows Terminal/PowerShell checks |
 
 Each ZIP includes the native executable, `LICENSE`, dependency notices in
 `THIRD-PARTY-LICENSES.txt`, and platform-specific `README.txt` instructions.
@@ -81,11 +83,14 @@ shasum -a 256 termkey-macos-aarch64.zip
 sha256sum termkey-linux-x64.zip
 ```
 
-From the download folder, extract your selected ZIP, then install its executable:
+Extract into a fresh folder, then install its executable. For an upgrade, close
+all TermKey instances first. Choose Homebrew or a manual PATH location deliberately;
+`command -v termkey` shows which installed copy your shell will launch.
 
 ```bash
 # Substitute the matching ZIP filename from the table above
-unzip termkey-linux-x64.zip
+unzip termkey-linux-x64.zip -d termkey-download
+cd termkey-download
 mkdir -p "$HOME/.local/bin"
 chmod 755 termkey
 cp termkey "$HOME/.local/bin/termkey"
@@ -98,7 +103,11 @@ Add the `export PATH=...` line to your shell startup file, such as `~/.zshrc` or
 `~/.bashrc`, for future terminals. ZIP extractors may lose executable permissions;
 `chmod 755` restores them. No Rust installation is needed. Production macOS ZIPs
 must be signed and notarized; keep Gatekeeper enabled and verify the release's
-origin if macOS warns about a download.
+origin if macOS warns about a download. Launch the ZIP executable from Terminal,
+rather than double-clicking it in Finder ([Apple's command-line tool guidance](https://developer.apple.com/forums/thread/706379)).
+ZIPs and standalone executables cannot carry stapled tickets; the first launch
+may need internet access to retrieve notarization approval. The Apple Silicon
+DMG/PKG carries stapled tickets. Do not remove quarantine to bypass a failed check.
 
 ### Portable ZIP — Windows x86_64
 
@@ -108,6 +117,7 @@ Use Windows Terminal with PowerShell. Download `termkey-windows-x64.zip` and
 ```powershell
 Get-FileHash .\termkey-windows-x64.zip -Algorithm SHA256
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\TermKey'
+if (Test-Path -LiteralPath $installDir) { throw 'Folder exists; follow ZIP upgrade instructions below' }
 Expand-Archive .\termkey-windows-x64.zip -DestinationPath $installDir
 & (Join-Path $installDir 'termkey.exe') --help
 & (Join-Path $installDir 'termkey.exe')
@@ -124,12 +134,13 @@ $env:Path = "$installDir;$env:Path"
 termkey --help
 ```
 
-Administrator rights, MSI, WinGet, Rust, and a separate Visual C++ runtime are not
-required by the portable distribution design. Release verification must confirm
-this on a clean standard-user machine. New downloads may trigger Windows
-SmartScreen/reputation warnings, even when signed. Check the source and checksum;
+Administrator rights, MSI, WinGet, Rust, Cargo, Git, and a separate Visual C++
+runtime are not required. Native CI verifies OS-only DLL imports; the final
+standard-user clean-machine check is still required. Windows ZIP executables
+are currently unsigned and may trigger SmartScreen/reputation warnings. Check the source and checksum;
 do not disable Windows security features. Windows client-version and desktop
-verification are required before claiming release support.
+verification are required before claiming release support. Use the
+[isolated Windows checklist](docs/windows-testing.md) to test without touching an existing vault.
 
 ## Vault locations and permissions
 
@@ -159,8 +170,17 @@ brew upgrade termkey
 ```
 
 For a ZIP upgrade, close TermKey, verify the new matching archive, and replace
-only the installed executable. Preserve your vault and configuration. On Windows,
-close all running copies before replacing `termkey.exe`.
+only the installed executable from a freshly extracted folder. Preserve your vault
+and configuration, and retain the package's license and dependency notices. On
+Windows, close all running copies before replacing `termkey.exe`.
+
+To remove Homebrew's package, run `brew uninstall termkey`. For a manual Unix
+installation at the path above, run `rm -i "$HOME/.local/bin/termkey"`. For a
+Windows ZIP installation, close all copies, then run
+`Remove-Item -LiteralPath (Join-Path $installDir 'termkey.exe')` in PowerShell and
+remove its user PATH entry if you added one. These commands leave vault/settings
+in their separate storage directories. Do not delete a directory containing your
+vault when removing an application folder.
 
 `termkey reset` permanently removes the active vault and settings after
 confirmation, keeps the application installed, and preserves exported backups.
@@ -184,6 +204,9 @@ The simplest transfer is an encrypted backup:
 1. Export with `termkey export <directory>` and choose a backup password.
 2. Move the encrypted `.termkey` file to the destination.
 3. Create/unlock the destination vault and run `termkey import <backup-file>`.
+   Keep an independent backup of any existing destination vault first; do not
+   replace its `vault.ck`. For a separate destination vault, use a fresh absolute
+   `TERMKEY_VAULT_DIR` directory.
 4. Enter the **backup password**, not necessarily either vault's master password.
 5. Configure recovery for the destination vault. Secondary passwords on imported
    protected entries remain required.
@@ -192,7 +215,8 @@ Exports contain entries, not local configuration or the source recovery setup.
 Do not rename an exported backup to `vault.ck`: backups and raw vaults have
 different magic values.
 
-For a raw-vault transfer, close every TermKey instance before copying `vault.ck`.
+For a raw-vault transfer, close every TermKey instance before copying `vault.ck`
+into a fresh private destination directory. Never overwrite an existing vault.
 Preserve its matching recovery configuration if you need the same recovery phrase.
 Do not blindly reuse an old absolute `vault_path` from another OS: update the
 local configuration/override to the destination path. Restore private file access
@@ -341,6 +365,9 @@ manual mode publishes or updates the tap. Production `v*` tags must match the
 Cargo version and pass every gate before publishing the complete release and
 updating the tap. Apple credentials and the narrowly scoped tap token must be
 configured before an authorized production run.
+
+See [release verification and publication](docs/releasing.md) for the protected
+signing procedure and final publication gates.
 
 Before declaring new platforms supported, verify the resulting packages on clean
 native machines. On Windows, use a standard user in Windows Terminal/PowerShell
