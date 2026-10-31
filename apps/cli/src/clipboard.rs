@@ -176,8 +176,10 @@ where
         wait_for_timeout(clear_after, cancellation);
         if let Ok(mut ownership) = coordinator.lock() {
             if ownership.current == Some(generation) {
-                if matches!(backend.get_text(), Ok(current) if current == text.as_str()) {
-                    let _ = backend.set_text(String::new());
+                if let Ok(current) = backend.get_text().map(Zeroizing::new) {
+                    if current.as_str() == text.as_str() {
+                        let _ = backend.set_text(String::new());
+                    }
                 }
                 ownership.current = None;
             }
