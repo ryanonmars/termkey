@@ -1,0 +1,148 @@
+name: Native target validation
+
+on:
+  workflow_call:
+    inputs:
+      artifact_suffix:
+        type: string
+        default: ci
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MUSL_IMAGE: rust:1.93.0-alpine3.23@sha256:69d7b9d9aeaf108a1419d9a7fcf7860dcc043e9dbd1ab7ce88e44228774d99e9
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - id: targets
+        shell: bash
+        run: node -e 'const fs=require("node:fs"); const include=JSON.parse(fs.readFileSync("scripts/release-targets.json","utf8")); fs.appendFileSync(process.env.GITHUB_OUTPUT, "matrix="+JSON.stringify({include})+"\n");'
+
+  native:
+    needs: plan
+    name: Test and build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      RUSTFLAGS: ${{ matrix.os == 'windows' && '-C target-feature=+crt-static' || '' }}
+      TERMKEY_GRAPHICS: 'off'
+      TERMKEY_SPLASH_MS: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Install native Rust
+        if: matrix.os != 'linux'
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: '1.93.0'
+          components: clippy
+          targets: ${{ matrix.target }}
+      - name: Check, test, lint, and build native target
+        if: matrix.os != 'linux'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          TERMKEY_PORTABILITY_OUT: ${{ github.workspace }}/portability/${{ matrix.target }}
+        run: |
+          cargo check --locked --target "$TARGET" --workspace --all-targets --all-features
+          cargo check --locked --target "$TARGET" --workspace --all-targets --no-default-features
+          env -u TERMKEY_PORTABILITY_OUT cargo test --locked --target "$TARGET" --workspace --all-targets --all-features
+          cargo clippy --locked --target "$TARGET" --workspace --all-targets --all-features -- -D warnings
+          cargo build --locked --release --target "$TARGET" --bin termkey
+          cargo test --locked --target "$TARGET" --test vault_portability -- --test-threads=1
+      - name: Check, test, lint, and build MUSL target on native CPU
+        if: matrix.os == 'linux'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            -e TARGET -e TERMKEY_GRAPHICS=off -e TERMKEY_SPLASH_MS=0 \
+            -e TERMKEY_PORTABILITY_OUT="/workspace/portability/$TARGET" \
+            "$MUSL_IMAGE" sh -eu -c '
+              apk add --no-cache build-base linux-headers
+              rustc --version; cc --version; uname -m
+              rustup component add clippy
+              cargo check --locked --target "$TARGET" --workspace --all-targets --all-features
+              cargo check --locked --target "$TARGET" --workspace --all-targets --no-default-features
+              env -u TERMKEY_PORTABILITY_OUT cargo test --locked --target "$TARGET" --workspace --all-targets --all-features
+              cargo clippy --locked --target "$TARGET" --workspace --all-targets --all-features -- -D warnings
+              cargo build --locked --release --target "$TARGET" --bin termkey
+              cargo test --locked --target "$TARGET" --test vault_portability -- --test-threads=1
+            '
+      - name: Make synthetic fixtures readable by artifact uploader
+        if: matrix.os == 'linux'
+        shell: bash
+        run: sudo chown -hR "$(id -u):$(id -g)" portability
+      - name: Upload native binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: termkey-binary-${{ matrix.target }}-${{ inputs.artifact_suffix }}
+          path: target/${{ matrix.target }}/release/${{ matrix.executable }}
+          if-no-files-found: error
+      - name: Upload synthetic vault fixtures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: termkey-fixtures-${{ matrix.target }}-${{ inputs.artifact_suffix }}
+          path: portability/${{ matrix.target }}/
+          if-no-files-found: error
+
+  portability:
+    needs: [plan, native]
+    name: Read every platform vault on ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      RUSTFLAGS: ${{ matrix.os == 'windows' && '-C target-feature=+crt-static' || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download every synthetic fixture bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: termkey-fixtures-*-${{ inputs.artifact_suffix }}
+          path: foreign-fixtures
+      - name: Install native Rust
+        if: matrix.os != 'linux'
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: '1.93.0'
+          targets: ${{ matrix.target }}
+      - name: Verify cross-platform production vaults
+        if: matrix.os != 'linux'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          TERMKEY_PORTABILITY_INPUT: ${{ github.workspace }}/foreign-fixtures
+          TERMKEY_PORTABILITY_EXPECT_BUNDLES: '5'
+        run: cargo test --locked --target "$TARGET" --test vault_portability -- --test-threads=1
+      - name: Verify cross-platform production vaults with MUSL
+        if: matrix.os == 'linux'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            -e TARGET -e TERMKEY_PORTABILITY_INPUT=/workspace/foreign-fixtures \
+            -e TERMKEY_PORTABILITY_EXPECT_BUNDLES=5 \
+            "$MUSL_IMAGE" sh -eu -c '
+              apk add --no-cache build-base linux-headers
+              cargo test --locked --target "$TARGET" --test vault_portability -- --test-threads=1
+            '
