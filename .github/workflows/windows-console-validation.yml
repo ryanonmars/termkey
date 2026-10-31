@@ -1,0 +1,41 @@
+# Temporary focused diagnosis while validating the native ConPTY harness.
+# The complete release workflow remains the mandatory five-target gate.
+name: Windows console validation
+on:
+  push:
+    branches: [feature/terminal-only]
+    paths:
+      - scripts/test-windows-terminal.py
+      - scripts/windows-console.test.mjs
+      - .github/workflows/windows-console-validation.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: termkey-console-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  console:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      TERMKEY_TEST_WINDOWS_CONSOLE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: '1.93.0'
+          targets: x86_64-pc-windows-msvc
+      - name: Build native Windows CLI
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw 'Native Windows x64 runner required' }
+          rustc --verbose --version
+          cargo build --locked --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise actual Windows console
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python scripts/test-windows-terminal.py --binary target/x86_64-pc-windows-msvc/debug/termkey.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
