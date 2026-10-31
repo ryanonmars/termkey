@@ -26,11 +26,44 @@ pub(crate) fn backup_file_name(name: &str) -> Result<String> {
         ));
     }
 
+    if cfg!(windows) && !valid_windows_filename(name) {
+        return Err(TermKeyError::ConfigError(
+            "Backup name is not a valid Windows filename.".into(),
+        ));
+    }
+
     if name.to_ascii_lowercase().ends_with(BACKUP_EXTENSION) {
         Ok(name.to_string())
     } else {
         Ok(format!("{name}{BACKUP_EXTENSION}"))
     }
+}
+
+fn valid_windows_filename(name: &str) -> bool {
+    if name.ends_with([' ', '.'])
+        || name
+            .chars()
+            .any(|ch| matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return false;
+    }
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    !matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) && !["COM", "LPT"].iter().any(|prefix| {
+        stem.strip_prefix(prefix).is_some_and(|suffix| {
+            matches!(
+                suffix,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+    })
 }
 
 pub fn run(file: &str) -> Result<()> {
@@ -109,6 +142,27 @@ pub fn run_with_vault(vault: &VaultData, directory: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_reserved_names_and_streams_are_rejected() {
+        for name in [
+            "CON",
+            "con.txt",
+            "PRN.termkey",
+            "NUL",
+            "COM1",
+            "COM¹.txt",
+            "LPT9",
+            "safe:stream",
+            "trailing.",
+            "bad?name",
+        ] {
+            assert!(!valid_windows_filename(name), "accepted invalid filename");
+        }
+        for name in ["vault backup", "CONSOLE", "COM10", "safe.termkey"] {
+            assert!(valid_windows_filename(name));
+        }
+    }
 
     #[test]
     fn backup_name_gets_termkey_extension() {

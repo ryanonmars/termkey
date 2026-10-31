@@ -22,10 +22,7 @@ pub struct Config {
 }
 
 fn default_vault_path() -> String {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    format!("{}/.termkey/vault.ck", home)
+    crate::platform::paths::default_vault_path()
 }
 
 fn default_clipboard_timeout() -> u64 {
@@ -105,7 +102,10 @@ mod tests {
         assert_eq!(config.clipboard_timeout_secs, 10);
         assert!(!config.first_run_complete);
         assert!(config.recovery.is_none());
-        assert!(config.vault_path.ends_with(".termkey/vault.ck"));
+        assert_eq!(
+            std::path::Path::new(&config.vault_path),
+            crate::vault::storage::vault_path()
+        );
     }
 
     #[test]

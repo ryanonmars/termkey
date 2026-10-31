@@ -17,7 +17,7 @@ argon2 = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = { version = "1", features = ["derive"] }
-arboard = "3"
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 rpassword = "7"
 dialoguer = "0.11"
 colored = "2"
@@ -51,3 +51,6 @@ webbrowser = { version = "1.2", features = ["hardened"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_ErrorReporting"] }

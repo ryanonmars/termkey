@@ -340,10 +340,8 @@ fn clear_legacy_recovery_after_migration(
     vault_path: &std::path::Path,
     vault_id: VaultId,
 ) -> Result<bool> {
-    let config_path = vault_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join("config.json");
+    let active_paths = crate::platform::paths::resolve()?;
+    let config_path = recovery_config_path(vault_path, &active_paths);
     crate::config::storage::update_config_at(&config_path, |config| {
         let has_active_recovery = config.has_active_recovery_for(vault_id);
         if matches!(
@@ -354,6 +352,20 @@ fn clear_legacy_recovery_after_migration(
         }
         Ok(has_active_recovery)
     })
+}
+
+fn recovery_config_path(
+    vault_path: &std::path::Path,
+    paths: &crate::platform::paths::StoragePaths,
+) -> PathBuf {
+    if vault_path == paths.data_dir.join("vault.ck") {
+        paths.config_dir.join("config.json")
+    } else {
+        vault_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("config.json")
+    }
 }
 
 fn vault_version(bytes: &[u8]) -> Result<u32> {
@@ -392,6 +404,24 @@ mod tests {
     use crate::vault::format::{decode_v3, encode_v3_unchecked_for_test, FORMAT_VERSION_V3};
     use crate::vault::model::VaultHeader;
     use crate::vault::storage::write_vault;
+
+    #[test]
+    fn recovery_settings_follow_split_data_and_config_layout() {
+        let root = TempDir::new().unwrap();
+        let paths = crate::platform::paths::StoragePaths {
+            data_dir: root.path().join("data"),
+            config_dir: root.path().join("config"),
+        };
+        assert_eq!(
+            super::recovery_config_path(&paths.data_dir.join("vault.ck"), &paths),
+            paths.config_dir.join("config.json")
+        );
+        let other_vault = root.path().join("explicit/vault.ck");
+        assert_eq!(
+            super::recovery_config_path(&other_vault, &paths),
+            root.path().join("explicit/config.json")
+        );
+    }
 
     fn password(value: &str) -> Zeroizing<String> {
         Zeroizing::new(value.to_string())

@@ -2,23 +2,28 @@ use clap::Parser;
 
 use termkey::cli::{Cli, Commands};
 use termkey::crypto::secure;
+use termkey::error::{Result, TermKeyError};
 use termkey::{apply_configured_vault_dir_override, commands, repl, ui, vault};
 
 fn main() {
-    secure::harden_process();
+    if let Err(error) = run() {
+        ui::borders::print_error(&error.to_string());
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
+    let cli = Cli::parse();
+    secure::harden_process().map_err(TermKeyError::Io)?;
+    termkey::initialize_storage_paths()?;
     vault::storage::migrate_vault_if_needed();
 
-    let cli = Cli::parse();
-
-    // In REPL mode, the REPL handles its own header display after auth.
-    // In CLI mode, clear screen and show header immediately.
     if cli.command.is_some() {
         ui::setup_app_theme(true);
     }
-
     apply_configured_vault_dir_override();
 
-    let result = match cli.command {
+    match cli.command {
         None => repl::run(),
         Some(cmd) => match cmd {
             Commands::Init => commands::init::run(),
@@ -46,10 +51,5 @@ fn main() {
             } => commands::config_cmd::run(show, *clipboard_timeout),
             Commands::Derive { ref name } => commands::derive::run(name),
         },
-    };
-
-    if let Err(e) = result {
-        ui::borders::print_error(&e.to_string() as &str);
-        std::process::exit(1);
     }
 }

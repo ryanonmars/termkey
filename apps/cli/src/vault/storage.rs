@@ -1,4 +1,4 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
@@ -21,7 +21,7 @@ const MAX_LEGACY_METADATA_LEN: usize = MAX_CIPHERTEXT_LEN;
 /// Header-derived limits are checked before reading the body; `take` also caps
 /// files which grow after the metadata check.
 pub(crate) fn read_encoded_file(path: &Path) -> Result<Vec<u8>> {
-    let mut file = File::open(path)?;
+    let mut file = crate::platform::fs::open_private_read(path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(TermKeyError::InvalidVaultFormat);
@@ -113,18 +113,13 @@ fn fail_if_injected(_failure_point: AtomicReplaceFailurePoint) -> Result<()> {
 
 /// Get the vault directory path, respecting TERMKEY_VAULT_DIR env var.
 pub fn vault_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("TERMKEY_VAULT_DIR") {
-        PathBuf::from(dir)
-    } else {
-        default_vault_dir()
-    }
+    crate::platform::paths::data_dir()
 }
 
 pub fn default_vault_dir() -> PathBuf {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".termkey")
+    crate::platform::paths::default_paths()
+        .expect("TermKey default storage paths require an absolute home directory")
+        .data_dir
 }
 
 pub fn migrate_vault_if_needed() {
@@ -157,35 +152,7 @@ fn delete_vault_at(path: &Path) -> Result<()> {
 
 /// Ensure the vault directory exists with proper permissions.
 pub fn ensure_vault_dir() -> Result<()> {
-    let dir = vault_dir();
-    if !dir.exists() {
-        fs::create_dir_all(&dir)?;
-        set_dir_permissions(&dir)?;
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_dir_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_dir_permissions(_path: &Path) -> Result<()> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_file_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_file_permissions(_path: &Path) -> Result<()> {
+    crate::platform::fs::ensure_private_directory(&vault_dir())?;
     Ok(())
 }
 
@@ -195,14 +162,7 @@ pub(crate) fn with_vault_lock<T>(
 ) -> Result<T> {
     let parent = parent_dir(vault_path);
     let lock_path = parent.join("vault.lock");
-    let lock_file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        // The lock file is only an inode used for advisory locking; preserve its contents.
-        .truncate(false)
-        .open(&lock_path)?;
-    set_file_permissions(&lock_path)?;
+    let lock_file = crate::platform::fs::open_private_lock(&lock_path)?;
     FileExt::lock(&lock_file)?;
     operation()
 }
@@ -248,14 +208,12 @@ fn create_unique_temp_file(parent: &Path, file_name: &str) -> Result<(PathBuf, F
     for _ in 0..128 {
         let suffix = rand::thread_rng().next_u64();
         let temp_path = parent.join(format!(".{file_name}.tmp-{suffix:016x}"));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-        {
+        match crate::platform::fs::create_private_file(&temp_path) {
             Ok(file) => {
                 if let Err(error) = fail_if_injected(AtomicReplaceFailurePoint::Permissions)
-                    .and_then(|_| set_file_permissions(&temp_path))
+                    .and_then(|_| {
+                        crate::platform::fs::protect_file(&file).map_err(TermKeyError::Io)
+                    })
                 {
                     drop(file);
                     fs::remove_file(&temp_path)?;
@@ -923,6 +881,25 @@ mod tests {
         ));
         assert!(!vault_path.exists());
         assert!(!backup_path.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_open_handle_blocks_replace_without_destroying_original() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("sharing-test.ck");
+        atomic_replace(&path, b"original synthetic bytes").unwrap();
+        let reader = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ)
+            .open(&path)
+            .unwrap();
+        assert!(atomic_replace(&path, b"replacement synthetic bytes").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original synthetic bytes");
+        drop(reader);
+        atomic_replace(&path, b"replacement synthetic bytes").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"replacement synthetic bytes");
     }
 
     #[test]

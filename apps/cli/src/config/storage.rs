@@ -1,4 +1,5 @@
-use std::fs::{self, OpenOptions};
+use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use fs4::FileExt;
@@ -100,7 +101,7 @@ fn fail_config_replace_if_injected() -> Result<()> {
 
 /// Get the config file path (~/.termkey/config.json).
 pub fn config_path() -> PathBuf {
-    crate::vault::storage::vault_dir().join("config.json")
+    crate::platform::paths::config_dir().join("config.json")
 }
 
 /// Load config from a specific path. Returns default if file doesn't exist.
@@ -108,7 +109,14 @@ pub fn load_config_from(path: &Path) -> Result<Config> {
     if !path.exists() {
         return Ok(Config::default());
     }
-    let data = fs::read_to_string(path)?;
+    let file = crate::platform::fs::open_private_read(path)?;
+    let mut data = String::new();
+    file.take(1024 * 1024 + 1).read_to_string(&mut data)?;
+    if data.len() > 1024 * 1024 {
+        return Err(TermKeyError::ConfigError(
+            "Configuration exceeds the supported size.".into(),
+        ));
+    }
     let config: Config =
         serde_json::from_str(&data).map_err(|e| TermKeyError::ConfigError(e.to_string()))?;
     Ok(config)
@@ -160,35 +168,18 @@ fn serialize_config(config: &Config) -> Result<String> {
     serde_json::to_string_pretty(config).map_err(|e| TermKeyError::ConfigError(e.to_string()))
 }
 
-fn with_config_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)?;
-        }
+pub(crate) fn with_config_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        crate::platform::fs::ensure_private_directory(parent)?;
     }
     let lock_path = path.with_extension("lock");
-    let lock_file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&lock_path)?;
-    set_lock_file_permissions(&lock_path)?;
+    let lock_file = crate::platform::fs::open_private_lock(&lock_path)?;
     run_config_lock_attempt_hook(&lock_path, &lock_file);
     FileExt::lock(&lock_file)?;
     operation()
-}
-
-#[cfg(unix)]
-fn set_lock_file_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_lock_file_permissions(_path: &Path) -> Result<()> {
-    Ok(())
 }
 
 /// Delete the config file and any leftover .tmp file.
