@@ -139,9 +139,42 @@ fn print_manual_update_instructions(update_status: &UpdateStatus, install_method
         links::format_terminal_hyperlink(&release_url, &release_url)
     );
 
+    if let Some(url) = archive_url_for_status(update_status) {
+        println!(
+            "  ZIP for this platform: {}",
+            links::format_terminal_hyperlink(&url, &url)
+        );
+    }
+    println!("  Verify SHA256SUMS, extract the ZIP, then replace only the executable. Vault data and settings are preserved.");
+    if cfg!(windows) {
+        println!("  Close all TermKey windows before replacing termkey.exe. Use a user-writable installation folder; administrator access is not required.");
+    }
+
     if matches!(install_method, InstallMethod::SourceBuild) {
         println!("  This binary appears to come from a local build, so you can also rebuild from source.");
     }
+}
+
+fn native_archive() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("termkey-macos-aarch64.zip"),
+        ("macos", "x86_64") => Some("termkey-macos-x64.zip"),
+        ("linux", "x86_64") => Some("termkey-linux-x64.zip"),
+        ("linux", "aarch64") => Some("termkey-linux-arm64.zip"),
+        ("windows", "x86_64") => Some("termkey-windows-x64.zip"),
+        _ => None,
+    }
+}
+
+fn archive_url_for_status(status: &UpdateStatus) -> Option<String> {
+    let archive = native_archive()?;
+    Some(match status {
+        UpdateStatus::Available(info) => format!(
+            "{RELEASES_PAGE_URL}/download/v{}/{archive}",
+            info.latest_version
+        ),
+        _ => format!("{RELEASES_PAGE_URL}/latest/download/{archive}"),
+    })
 }
 
 fn latest_release_label(update_status: &UpdateStatus) -> String {
@@ -216,6 +249,25 @@ fn path_components(path: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_linux_homebrew_and_links_platform_specific_zip() {
+        assert_eq!(
+            detect_install_method(Path::new(
+                "/home/linuxbrew/.linuxbrew/Cellar/termkey/1.0.2/bin/termkey"
+            )),
+            InstallMethod::Homebrew
+        );
+        let status = UpdateStatus::Available(update::UpdateInfo {
+            latest_version: "1.1.0".into(),
+        });
+        if let Some(archive) = native_archive() {
+            assert_eq!(
+                archive_url_for_status(&status).unwrap(),
+                format!("{RELEASES_PAGE_URL}/download/v1.1.0/{archive}")
+            );
+        }
+    }
 
     #[test]
     fn detects_homebrew_cellar_paths() {

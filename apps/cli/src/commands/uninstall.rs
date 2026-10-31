@@ -17,6 +17,7 @@ enum UninstallPlan {
     Homebrew,
     MacOsInstaller,
     Executable(PathBuf),
+    WindowsPortable(PathBuf),
 }
 
 pub fn run(skip_confirmation: bool) -> Result<()> {
@@ -28,6 +29,19 @@ pub fn run(skip_confirmation: bool) -> Result<()> {
         Path::new(MACOS_APP).is_dir(),
         Path::new(MACOS_UNINSTALLER).is_dir(),
     )?;
+
+    let plan = portable_plan(plan, cfg!(windows));
+    if let UninstallPlan::WindowsPortable(path) = &plan {
+        println!("  Portable Windows installation: close TermKey, then run this PowerShell command to remove the executable:");
+        if let Some(command) = powershell_remove_command(std::slice::from_ref(path)) {
+            println!("    {command}");
+        } else {
+            println!("    Remove termkey.exe manually after closing TermKey.");
+        }
+        println!("  Your vault, settings, and backups are preserved.");
+        print_retained_vault_instructions(&crate::vault::storage::vault_dir());
+        return Ok(());
+    }
 
     println!();
     println!("  This removes the TermKey application. Your vault, settings, and encrypted backups are preserved.");
@@ -62,41 +76,84 @@ pub fn run(skip_confirmation: bool) -> Result<()> {
     Ok(())
 }
 
-fn retained_vault_cleanup_command(directory: &Path) -> Option<String> {
-    let absolute_directory = if directory.is_absolute() {
-        directory.to_path_buf()
-    } else {
-        std::env::current_dir().ok()?.join(directory)
-    };
-    let directory = absolute_directory.to_str()?;
-    if directory.chars().any(char::is_control) {
-        return None;
+fn portable_plan(plan: UninstallPlan, windows: bool) -> UninstallPlan {
+    match plan {
+        UninstallPlan::Executable(path) if windows => UninstallPlan::WindowsPortable(path),
+        other => other,
     }
-    let mut paths: Vec<PathBuf> = crate::commands::reset::TERMKEY_DATA_FILES
+}
+
+fn powershell_remove_command(paths: &[PathBuf]) -> Option<String> {
+    let values: Option<Vec<String>> = paths
         .iter()
-        .map(|name| Path::new(directory).join(name))
+        .map(|path| {
+            let value = path.to_str()?;
+            if value.chars().any(char::is_control) {
+                return None;
+            }
+            Some(format!("'{}'", value.replace('\'', "''")))
+        })
         .collect();
-    if let Ok(entries) = fs::read_dir(directory) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_str()?;
-            if name.starts_with(".vault.ck.tmp-") || name.starts_with(".config.json.tmp-") {
-                if name.chars().any(char::is_control) {
-                    return None;
+    Some(format!(
+        "Remove-Item -LiteralPath @({}) -Force -ErrorAction Stop",
+        values?.join(", ")
+    ))
+}
+
+fn cleanup_command(
+    data_directory: &Path,
+    config_directory: &Path,
+    windows: bool,
+) -> Option<String> {
+    let absolute = |directory: &Path| -> Option<PathBuf> {
+        Some(if directory.is_absolute() {
+            directory.to_owned()
+        } else {
+            std::env::current_dir().ok()?.join(directory)
+        })
+    };
+    let data_directory = absolute(data_directory)?;
+    let config_directory = absolute(config_directory)?;
+    let mut paths = vec![
+        data_directory.join("vault.ck"),
+        data_directory.join("vault.tmp"),
+        data_directory.join("vault.lock"),
+        config_directory.join("config.json"),
+        config_directory.join("config.tmp"),
+        config_directory.join("config.lock"),
+    ];
+    for directory in [&data_directory, &config_directory] {
+        if let Ok(entries) = fs::read_dir(directory) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_str()?;
+                if name.starts_with(".vault.ck.tmp-") || name.starts_with(".config.json.tmp-") {
+                    paths.push(entry.path());
                 }
-                paths.push(entry.path());
             }
         }
     }
     paths.sort();
+    paths.dedup();
+    if windows {
+        return powershell_remove_command(&paths);
+    }
     let quoted: Option<Vec<String>> = paths
         .iter()
         .map(|path| {
-            path.to_str()
-                .map(|value| format!("'{}'", value.replace('\'', "'\"'\"'")))
+            let value = path.to_str()?;
+            if value.chars().any(char::is_control) {
+                return None;
+            }
+            Some(format!("'{}'", value.replace('\'', "'\"'\"'")))
         })
         .collect();
     Some(format!("rm -f -- {}", quoted?.join(" ")))
+}
+
+#[cfg(test)]
+fn retained_vault_cleanup_command(directory: &Path) -> Option<String> {
+    cleanup_command(directory, directory, cfg!(windows))
 }
 
 fn print_retained_vault_instructions(directory: &Path) {
@@ -105,7 +162,14 @@ fn print_retained_vault_instructions(directory: &Path) {
         crate::links::sanitize_terminal_text(&directory.display().to_string())
     );
     println!("  To permanently delete its vault data and settings after uninstalling:");
-    if let Some(command) = retained_vault_cleanup_command(directory) {
+    let config_path = crate::config::storage::config_path();
+    let config_directory = config_path.parent().unwrap_or(directory);
+    println!(
+        "  Configuration retained at: {}",
+        crate::links::sanitize_terminal_text(&config_path.display().to_string())
+    );
+    println!("  Close all TermKey instances before running the cleanup command.");
+    if let Some(command) = cleanup_command(directory, config_directory, cfg!(windows)) {
         println!("    {command}");
     } else {
         println!("    Remove the vault and settings files manually from this folder.");
@@ -156,6 +220,9 @@ fn execute_plan(
                 "--vault-dir".into(), crate::vault::storage::vault_dir().into_os_string(),
             ])
         }
+        UninstallPlan::WindowsPortable(_) => Err(TermKeyError::ConfigError(
+            "Close TermKey before removing the portable Windows executable.".into(),
+        )),
         UninstallPlan::Executable(path) => fs::remove_file(path).map_err(|error| {
             TermKeyError::ConfigError(format!(
                 "Could not remove executable '{}': {error}. Remove it using the permissions required by your installation. Your vault and settings were not changed.",
@@ -183,6 +250,30 @@ fn run_command(program: &str, args: &[OsString]) -> Result<()> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn portable_windows_uninstall_requires_close_and_literal_path_removal() {
+        let path = PathBuf::from("C:/Users/Synthetic/O'Brien $(ignored)/termkey.exe");
+        let plan = portable_plan(UninstallPlan::Executable(path.clone()), true);
+        assert!(matches!(plan, UninstallPlan::WindowsPortable(_)));
+        let command = powershell_remove_command(&[path]).unwrap();
+        assert!(command.starts_with("Remove-Item -LiteralPath @("));
+        assert!(command.contains("O''Brien $(ignored)"));
+        assert!(
+            execute_plan(&plan, |_, _| panic!("must not spawn a self-delete command")).is_err()
+        );
+    }
+
+    #[test]
+    fn cleanup_handles_separate_linux_data_and_configuration() {
+        let dir = TempDir::new().unwrap();
+        let data = dir.path().join("data");
+        let config = dir.path().join("config");
+        let command = cleanup_command(&data, &config, false).unwrap();
+        assert!(command.contains(data.join("vault.ck").to_str().unwrap()));
+        assert!(command.contains(config.join("config.json").to_str().unwrap()));
+        assert!(!command.contains(data.join("config.json").to_str().unwrap()));
+    }
 
     #[cfg(unix)]
     #[test]

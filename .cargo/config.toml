@@ -1,0 +1,4 @@
+# A portable Windows ZIP must not need a separately installed VC++ runtime.
+# Native bundled C dependencies receive the same CRT selection through cc-rs.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
