@@ -10,6 +10,7 @@ import argparse
 import ctypes
 from ctypes import wintypes
 import os
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -27,6 +28,24 @@ TIMEOUT_MS = 30000
 
 def plain_text(data):
     return CSI.sub(b"", OSC.sub(b"", data)).decode("utf-8", "replace")
+
+
+def create_without_redirected_standard_handles(api, create):
+    # Service/CI stdhandles are pipes. Leaving those in the parent's Win32 table
+    # can redirect a ConPTY child's output outside its private console. Console
+    # subsystem startup fills unset entries; Python's own fd objects remain open.
+    # https://learn.microsoft.com/windows/console/getstdhandle
+    devices = (0xfffffff6, 0xfffffff5, 0xfffffff4)
+    saved = [(device, api.GetStdHandle(device)) for device in devices]
+    try:
+        for device in devices:
+            if not api.SetStdHandle(device, None):
+                raise RuntimeError("could not isolate child standard handles")
+        return create()
+    finally:
+        for device, handle in saved:
+            if not api.SetStdHandle(device, handle):
+                raise RuntimeError("could not restore validation host standard handles")
 
 
 class COORD(ctypes.Structure):
@@ -89,6 +108,8 @@ class Console:
     def _declare_api(self):
         declarations = {
             "CreatePipe": ([ctypes.POINTER(wintypes.HANDLE), ctypes.POINTER(wintypes.HANDLE), ctypes.c_void_p, wintypes.DWORD], wintypes.BOOL),
+            "GetStdHandle": ([wintypes.DWORD], wintypes.HANDLE),
+            "SetStdHandle": ([wintypes.DWORD, wintypes.HANDLE], wintypes.BOOL),
             "CreatePseudoConsole": ([COORD, wintypes.HANDLE, wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)], ctypes.c_long),
             "ClosePseudoConsole": ([wintypes.HANDLE], None),
             "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
@@ -170,9 +191,12 @@ class Console:
             block = "\0".join(key + "=" + value for key, value in sorted(environment.items(), key=lambda pair: pair[0].upper())) + "\0\0"
             environment_buffer = ctypes.create_unicode_buffer(block)
             process = PROCESS_INFORMATION()
-            if not self.api.CreateProcessW(None, command, None, None, False, 0x00080000 | 0x00000400,
-                                           environment_buffer, self.directory, ctypes.byref(startup), ctypes.byref(process)):
-                raise ctypes.WinError(ctypes.get_last_error())
+            def create():
+                if not self.api.CreateProcessW(None, command, None, None, False, 0x00080000 | 0x00000400,
+                                               environment_buffer, self.directory, ctypes.byref(startup), ctypes.byref(process)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+
+            create_without_redirected_standard_handles(self.api, create)
             self.api.CloseHandle(process.hThread)
             # The pseudoconsole owns references after attaching the first client.
             for handle in (self.input_read, self.output_write):
@@ -197,19 +221,28 @@ class Console:
         self.probe_count += 1
         output = Path(self.directory, "console-mode-" + str(self.probe_count) + ".txt")
         probe = (
-            "import ctypes,pathlib,sys;from ctypes import wintypes;"
+            "import ctypes,json,pathlib,sys;from ctypes import wintypes;"
             "k=ctypes.WinDLL('kernel32',use_last_error=True);"
             "k.GetStdHandle.argtypes=[wintypes.DWORD];k.GetStdHandle.restype=wintypes.HANDLE;"
             "k.GetConsoleMode.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)];"
-            "m=wintypes.DWORD();ok=k.GetConsoleMode(k.GetStdHandle(0xfffffff6),ctypes.byref(m));"
-            "assert ok;pathlib.Path(sys.argv[1]).write_text(str(m.value),encoding='ascii')"
+            "k.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE];"
+            "k.CreateFileW.restype=wintypes.HANDLE;k.CloseHandle.argtypes=[wintypes.HANDLE];"
+            "h=k.CreateFileW('CONIN$',0xc0000000,3,None,3,0,None);m=wintypes.DWORD();"
+            "ok=bool(k.GetConsoleMode(h,ctypes.byref(m)));"
+            "std_ok=all(k.GetConsoleMode(k.GetStdHandle(d),ctypes.byref(wintypes.DWORD())) for d in (0xfffffff6,0xfffffff5,0xfffffff4));"
+            "pathlib.Path(sys.argv[1]).write_text(json.dumps(dict(ok=ok,std_ok=bool(std_ok),mode=m.value)),encoding='ascii');"
+            "k.CloseHandle(h)"
         )
         process = self.spawn([sys.executable, "-c", probe, output])
         self.wait_exit(process)
         try:
-            return int(output.read_text(encoding="ascii"))
+            status = json.loads(output.read_text(encoding="ascii"))
+            if not status["ok"] or not status["std_ok"]:
+                raise RuntimeError("isolated client does not have console-backed standard handles")
+            return status["mode"]
         finally:
             output.unlink(missing_ok=True)
+
 
     def wait_hidden(self):
         deadline = time.monotonic() + 5
