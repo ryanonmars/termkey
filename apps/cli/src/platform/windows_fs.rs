@@ -24,9 +24,8 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::Storage::FileSystem::{
     CreateDirectoryW, CreateFileW, CREATE_NEW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NORMAL,
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_ALWAYS, OPEN_EXISTING, READ_CONTROL, WRITE_DAC,
-    WRITE_OWNER,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    OPEN_ALWAYS, OPEN_EXISTING, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -324,7 +323,11 @@ pub(super) fn ensure_private_directory(path: &Path) -> io::Result<()> {
     let handle = unsafe {
         CreateFileW(
             path_wide.as_ptr(),
-            READ_CONTROL | WRITE_DAC | WRITE_OWNER | FILE_READ_ATTRIBUTES,
+            // SetSecurityInfo suppresses automatic propagation only when the
+            // directory handle was opened with MAXIMUM_ALLOWED (winnt.h).
+            // Each TermKey child is independently protected at creation/open;
+            // unrelated existing children must keep their original ACLs.
+            0x0200_0000, // MAXIMUM_ALLOWED
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             null(),
             OPEN_EXISTING,
@@ -426,6 +429,132 @@ mod tests {
         assert!(ensure_private_directory(&link).is_err());
         assert_eq!(fs::read(target.join("sentinel")).unwrap(), b"preserve");
         fs::remove_dir(&link).unwrap();
+    }
+
+    #[test]
+    fn protecting_custom_directory_preserves_unrelated_child_acls() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
+        };
+
+        fn security_description(path: &Path) -> String {
+            unsafe {
+                let path = wide(path.as_os_str()).unwrap();
+                let mut descriptor = null_mut();
+                assert_eq!(
+                    GetNamedSecurityInfoW(
+                        path.as_ptr(),
+                        SE_FILE_OBJECT,
+                        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                        null_mut(),
+                        null_mut(),
+                        null_mut(),
+                        null_mut(),
+                        &mut descriptor,
+                    ),
+                    0
+                );
+                let _descriptor = LocalAllocation(descriptor);
+                let mut text = null_mut();
+                assert_ne!(
+                    ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                        descriptor,
+                        SDDL_REVISION_1,
+                        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                        &mut text,
+                        null_mut(),
+                    ),
+                    0
+                );
+                let _text = LocalAllocation(text.cast());
+                let mut length = 0;
+                while *text.add(length) != 0 {
+                    length += 1;
+                }
+                String::from_utf16(std::slice::from_raw_parts(text, length)).unwrap()
+            }
+        }
+
+        let root = TempDir::new().unwrap();
+        let directory = root.path().join("custom vault directory");
+        fs::create_dir(&directory).unwrap();
+        // Give this synthetic parent an inheritable Everyone allow ACE before
+        // creating children. Replacing it with a private inheritable ACE would
+        // otherwise rewrite the unrelated children's inherited permissions.
+        let parent_handle = fs::OpenOptions::new()
+            .read(true)
+            .access_mode(READ_CONTROL | WRITE_DAC)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(&directory)
+            .unwrap();
+        unsafe {
+            let text = wide(OsStr::new("D:P(A;OICI;FA;;;WD)")).unwrap();
+            let mut descriptor = null_mut();
+            assert_ne!(
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    text.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut descriptor,
+                    null_mut(),
+                ),
+                0
+            );
+            let _descriptor = LocalAllocation(descriptor);
+            let mut present = 0;
+            let mut defaulted = 0;
+            let mut dacl = null_mut();
+            assert_ne!(
+                GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted),
+                0
+            );
+            assert_eq!(
+                SetSecurityInfo(
+                    parent_handle.as_raw_handle().cast(),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    null_mut(),
+                    null_mut(),
+                    dacl,
+                    null(),
+                ),
+                0
+            );
+        }
+        drop(parent_handle);
+        let nested = directory.join("unrelated directory");
+        fs::create_dir(&nested).unwrap();
+        let child = nested.join("unrelated.txt");
+        let sibling = directory.join("unrelated.txt");
+        fs::write(&child, b"synthetic nested contents").unwrap();
+        fs::write(&sibling, b"synthetic sibling contents").unwrap();
+        let preserved = [
+            root.path(),
+            nested.as_path(),
+            child.as_path(),
+            sibling.as_path(),
+        ];
+        let before: Vec<_> = preserved
+            .iter()
+            .map(|path| security_description(path))
+            .collect();
+        for _ in 0..2 {
+            ensure_private_directory(&directory).unwrap();
+            let handle = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(&directory)
+                .unwrap();
+            let descriptor = PrivateDescriptor::new(true).unwrap();
+            unsafe { verify_handle(&handle, descriptor.owner().unwrap()).unwrap() };
+            let after: Vec<_> = preserved
+                .iter()
+                .map(|path| security_description(path))
+                .collect();
+            assert_eq!(before, after, "protecting a leaf changed unrelated ACLs");
+        }
+        assert_eq!(fs::read(child).unwrap(), b"synthetic nested contents");
+        assert_eq!(fs::read(sibling).unwrap(), b"synthetic sibling contents");
     }
 
     #[test]
