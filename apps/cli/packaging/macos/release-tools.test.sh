@@ -151,6 +151,8 @@ if [[ "$1" == "-x" && "$2" == "-k" && "$3" == "$TERMKEY_TEST_ZIP_PATH" && $# -eq
   destination=${4:?}
   mkdir -p "$destination"
   : > "$destination/termkey"
+  : > "$destination/LICENSE"
+  : > "$destination/README.txt"
 else
   exit 64
 fi'
@@ -252,7 +254,7 @@ export TERMKEY_TEST_PKG_PATH="$artifacts_dir/TermKey.pkg"
 export TERMKEY_TEST_DMG_PATH="$artifacts_dir/TermKey.dmg"
 export TERMKEY_TEST_ZIP_PATH="$artifacts_dir/TermKey.zip"
 export APPLE_NOTARY_KEY_BASE64=encoded-notary-key
-export TERMKEY_TEST_ZIP_ENTRIES=$'termkey'
+export TERMKEY_TEST_ZIP_ENTRIES=$'LICENSE\nREADME.txt\ntermkey'
 
 run_case accepted pkg
 assert_log_contains 'notarytool submit'
