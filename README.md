@@ -165,8 +165,9 @@ Settings also offers **Reset vault and settings**. Type `DELETE` to confirm.
 
 `termkey uninstall` preserves vault data, settings, and backups. Homebrew uses its
 package manager; the macOS installer uses its companion uninstaller. Portable
-Windows removal requires the executable to be closed before deletion. Follow the
-platform-specific instructions printed by the command. Before and after removal,
+Windows removal prints a PowerShell `Remove-Item -LiteralPath` command to run
+after closing all copies; the executable remains installed until you run that
+command. Follow the platform-specific instructions printed by TermKey. Before and after removal,
 TermKey identifies retained vault data and provides a cleanup command that still
 works without the application. Delete unwanted exported backups separately.
 
