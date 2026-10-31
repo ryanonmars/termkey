@@ -300,7 +300,7 @@ Notes:
 - Imports remain compatible with existing `.ck` backup files.
 - `termkey recover` uses your configured 24-word recovery phrase.
 - `termkey reset` deletes vault data and settings after confirmation, preserves encrypted backups, and keeps TermKey installed. Run `termkey` afterward to set up a new vault.
-- `termkey uninstall` removes TermKey while preserving vault data and settings. Homebrew installs use `brew uninstall termkey`; macOS installer installs launch the companion uninstaller. The confirmation and completion messages show the retained vault location and a standalone cleanup command that works after TermKey is gone. To delete vault data first, run `termkey reset` before uninstalling.
+- `termkey uninstall` preserves vault data and settings. Homebrew uses `brew uninstall termkey`; the macOS installer launches its companion uninstaller; portable Windows prints a removal command to run after closing TermKey. The messages show the retained vault location and a cleanup command that works after removal. To delete vault data first, run `termkey reset`.
 - `termkey update` checks the latest GitHub release. On Homebrew installs it runs the Homebrew update flow; on installer/manual/source installs it prints the correct release download page.
 - `termkey derive` saves a public address for supported Ethereum, Bitcoin, and Solana key or seed entries.
 
@@ -314,6 +314,41 @@ Notes:
 | **Entry** | `Shift+A` add, `Shift+V` view, `Shift+C` copy, `Shift+E` edit, `Shift+D` delete |
 | **Vault** | `Shift+X` export, `Shift+I` import, `Shift+P` change password, `Shift+S` settings |
 | **Other** | `?` help, `Shift+Q` quit, `Ctrl+C` quit, `Ctrl+Q` quit, `F1` recovery from the login screen |
+
+---
+
+## Build and release validation
+
+Release builds use Rust **1.93.0**, pinned in `rust-toolchain.toml`. To test this
+checkout without launching an older installed executable:
+
+```bash
+cargo run --locked -- --help  # CLI help
+cargo run --locked           # TUI
+npm ci
+npm run validate
+```
+
+The release workflow requires native tests/builds for all five targets, production
+vault fixture exchange between every target, private Linux clipboard tests,
+archive verification, and a complete checksum manifest. Linux builds use the
+pinned MUSL container digest in the workflow. ZIP ordering, timestamps, and modes
+are deterministic for identical inputs; compiler/SDK updates can change binaries.
+
+Manual workflow dispatch with `trusted_build: false` prepares unsigned validation
+artifacts. `trusted_build: true` also signs/notarizes macOS artifacts; neither
+manual mode publishes or updates the tap. Production `v*` tags must match the
+Cargo version and pass every gate before publishing the complete release and
+updating the tap. Apple credentials and the narrowly scoped tap token must be
+configured before an authorized production run.
+
+Before declaring new platforms supported, verify the resulting packages on clean
+native machines. On Windows, use a standard user in Windows Terminal/PowerShell
+and an ordinary console: check hidden input, TUI restoration, vault/recovery and
+secondary-password operations, backup import/export, held-file/access-denied
+failures, reset, and portable replacement/removal without installing a runtime.
+Verify macOS signatures/notarization/Gatekeeper and Homebrew installation on each
+supported OS/CPU. Never use a real vault for release testing.
 
 ---
 
