@@ -1,0 +1,6 @@
+# Keep lockfile and license fingerprints stable on every checkout.
+* text=auto eol=lf
+
+# Encrypted vaults/backups must never undergo newline conversion.
+*.ck -text
+*.termkey -text
