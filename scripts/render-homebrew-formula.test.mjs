@@ -54,10 +54,10 @@ test('formula selects the exact public ZIP and checksum for all four Homebrew ho
   for (const [index, target] of brewTargets.entries()) {
     const ruby = `
       class Formula
-        def self.desc(*) = nil
-        def self.homepage(*) = nil
-        def self.version(*) = nil
-        def self.license(*) = nil
+        def self.desc(*); end
+        def self.homepage(*); end
+        def self.version(*); end
+        def self.license(*); end
         def self.on_macos(&b); class_eval(&b) if ENV.fetch('TEST_OS') == 'macos'; end
         def self.on_linux(&b); class_eval(&b) if ENV.fetch('TEST_OS') == 'linux'; end
         def self.on_arm(&b); class_eval(&b) if ENV.fetch('TEST_ARCH') == 'arm64'; end
