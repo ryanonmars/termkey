@@ -9,7 +9,7 @@ use crate::error::{Result, TermKeyError};
 use crate::ui::borders::print_success;
 use crate::vault::storage;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) const TERMKEY_DATA_FILES: &[&str] = &[
     "vault.ck",
     "vault.tmp",

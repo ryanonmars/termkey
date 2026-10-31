@@ -331,14 +331,13 @@ fn windows_open_handle_and_readonly_target_preserve_existing_vault() {
     assert!(session.save().is_err());
     drop(handle);
     assert!(fs::read(&path).unwrap() == expected);
-    let mut permissions = fs::metadata(&path).unwrap().permissions();
+    let original_permissions = fs::metadata(&path).unwrap().permissions();
+    let mut permissions = original_permissions.clone();
     permissions.set_readonly(true);
     fs::set_permissions(&path, permissions).unwrap();
     assert!(session.save().is_err());
     assert!(fs::read(&path).unwrap() == expected);
-    let mut permissions = fs::metadata(&path).unwrap().permissions();
-    permissions.set_readonly(false);
-    fs::set_permissions(&path, permissions).unwrap();
+    fs::set_permissions(&path, original_permissions).unwrap();
     session.save().unwrap();
     verify_contents(
         &VaultSession::open(password(MASTER), path)

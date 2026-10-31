@@ -60,6 +60,9 @@ class PROCESS_INFORMATION(ctypes.Structure):
 class Console:
     def __init__(self, directory):
         self.directory = str(directory)
+        # Keep the working directory separate: Windows holds each process CWD
+        # open without delete sharing, while the vault enforces its own ACL.
+        self.vault_directory = str(Path(directory) / "vault")
         self.api = ctypes.WinDLL("kernel32", use_last_error=True)
         self._declare_api()
         self.handles = []
@@ -162,7 +165,7 @@ class Console:
             startup.StartupInfo.cb = ctypes.sizeof(startup)
             startup.lpAttributeList = ctypes.cast(attributes, ctypes.c_void_p)
             command = ctypes.create_unicode_buffer(subprocess.list2cmdline([str(arg) for arg in arguments]))
-            environment = dict(os.environ, TERMKEY_VAULT_DIR=self.directory,
+            environment = dict(os.environ, TERMKEY_VAULT_DIR=self.vault_directory,
                                TERMKEY_GRAPHICS="off", TERMKEY_SPLASH_MS="0")
             block = "\0".join(key + "=" + value for key, value in sorted(environment.items(), key=lambda pair: pair[0].upper())) + "\0\0"
             environment_buffer = ctypes.create_unicode_buffer(block)
@@ -267,7 +270,7 @@ def main():
             console.wait_exit(process)
             if secret.decode("utf-8") in plain_text(console.snapshot()):
                 raise RuntimeError("password appeared in console output")
-            if not Path(directory, "vault.ck").read_bytes().startswith(b"CKPR"):
+            if not Path(console.vault_directory, "vault.ck").read_bytes().startswith(b"CKPR"):
                 raise RuntimeError("console init did not create a production vault")
             if console.mode() & ECHO != initial_mode & ECHO:
                 raise RuntimeError("CLI password prompt did not restore console echo")
