@@ -11,8 +11,8 @@ Download `termkey-windows-x64.zip` and `SHA256SUMS` from the same release into
 Downloads. Before publication, use the Windows ZIP and checksum manifest from
 the same validated workflow's complete release bundle. Do not mix runs.
 
-For the already validated build, open [run 41230994032](https://github.com/ryanonmars/termkey/actions/runs/41230994032)
-in your Windows browser, scroll to **Artifacts**, and download
+For a prepublication build, open the validated Actions run linked in the testing
+handoff in your Windows browser, confirm its commit, scroll to **Artifacts**, and download
 `termkey-ready-unsigned-dry-run`. Extract that outer artifact ZIP, then place its
 `termkey-windows-x64.zip` and `SHA256SUMS` in Downloads for the commands below.
 The inner ZIP contains the Windows executable; no repository checkout is needed.
@@ -53,6 +53,16 @@ Get-ChildItem -LiteralPath $testPackage -Name
 Invoke-TermKeyTest --version
 Invoke-TermKeyTest --help
 ```
+
+Optionally add the extracted folder to PATH for this session only:
+
+```powershell
+$previousTestPath = $env:Path
+$env:Path = "$testPackage;$env:Path"
+```
+
+Keep using `Invoke-TermKeyTest` below so its isolation guard remains active.
+Closing this terminal removes the temporary PATH change.
 
 Expect exactly `termkey.exe`, `LICENSE`, `README.txt`, and
 `THIRD-PARTY-LICENSES.txt`. Stop on missing-DLL/runtime prompts, unexpected
@@ -104,6 +114,25 @@ clipboard, or copies retained by other applications. Use no real secrets here.
 Repeat this section in the regular PowerShell console using a fresh setup block;
 environment overrides and helper functions do not transfer between sessions.
 
+## Reset only the synthetic test vault
+
+Exit every TUI session first. The guarded command below uses only `$testVault`.
+Approve the confirmation and type `DELETE` at the prompt. Vault/settings must
+disappear; empty lock files may remain. The executable must still launch.
+
+```powershell
+Invoke-TermKeyTest reset
+foreach ($name in @('vault.ck', 'config.json')) {
+    if (Test-Path -LiteralPath (Join-Path $testVault $name)) { throw 'Reset left test data behind' }
+}
+Invoke-TermKeyTest --version
+Invoke-TermKeyTest init
+Invoke-TermKeyTest list
+```
+
+Use the same synthetic master password and decline recovery again. The reopened
+vault must be empty. This creates fresh test data for the uninstall check below.
+
 ## Update and uninstall
 
 ```powershell
@@ -137,6 +166,7 @@ normal uninstall retains vault data. Exported backups elsewhere are separate.
 
 ```powershell
 [Environment]::SetEnvironmentVariable('TERMKEY_VAULT_DIR', $previousVaultOverride, 'Process')
+if (Test-Path Variable:\previousTestPath) { $env:Path = $previousTestPath }
 Remove-Item Function:\Invoke-TermKeyTest -ErrorAction SilentlyContinue
 if ($testRootCreated -and $testRoot -and (Split-Path -Leaf $testRoot) -match '^TermKey-validation-[a-f0-9]{32}$' -and
     (Split-Path -Parent $testRoot) -eq $env:TEMP) {
